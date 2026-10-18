@@ -68,8 +68,6 @@ with st.sidebar:
             if M.REQUIRE_USER_KEY:
                 st.caption("This app answers with your own key only.")
     st.session_state.spec = f"{provider}:{model.strip()}"
-    st.toggle("Neo-brutalist style", value=True, key="brutal",
-              help="Thick borders, hard shadows, flat colours. Switch off for the modernist look; the layout stays the same.")
 
     chats = MG.sessions(st.session_state.user, st.session_state.session, limit=10)
     ui.section("Chats", "forum")
@@ -96,5 +94,7 @@ with st.sidebar:
                    "Data: public Kubernetes repositories. People appear only as GitHub handles.")
 
 ui.apply_style()
+ui.topbar()
+ui.console()
 page.run()
 ui.console_end()

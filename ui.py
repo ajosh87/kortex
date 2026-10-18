@@ -2,12 +2,14 @@
 done events) into Streamlit elements: no data is computed or reshaped here.
 
 Layout is a bento grid of tiles (always), kept to a readable width with room between them. On top of it an
-optional neo-brutalist style (sidebar toggle): thick ink borders, hard shadows, square corners, flat colour fills
+optional neo-brutalist style (switch in the top bar): thick ink borders, hard shadows, square corners, flat colour fills
 and bold type. Only tiles whose content we control get colour fills; tiles with graphs, tables or code keep the
 theme background.
 
-Every page also has a console drawer pinned to the bottom: a log of what ran in the background (model calls,
-tool calls, and every Cypher query with its parameters and response), written as it happens."""
+Like a desktop chat app, the page has three parts: chats on the left (sidebar), the conversation in the middle, and a
+console panel on the right: a log of what ran in the background (model calls, tool calls, and every Cypher query
+with its parameters and response), written as it happens. The panel is open by default (on narrow screens it
+starts closed) and is shown or hidden from the top bar."""
 import json
 import re
 from datetime import datetime
@@ -85,7 +87,7 @@ BASE_CSS = """<style>
 [data-testid="stMarkdownContainer"] table { display: block; max-width: 100%; overflow-x: auto; }
 /* room to breathe: a readable column in the middle of wide screens, generous margins, roomier tiles */
 [data-testid="stMainBlockContainer"], [data-testid="stBottomBlockContainer"] { max-width: 1120px; margin: 0 auto; }
-[data-testid="stMainBlockContainer"] { padding-top: 3rem; padding-bottom: 4rem; }
+[data-testid="stMainBlockContainer"] { padding-top: 3rem; padding-bottom: 9rem; }  /* clear of the chat bar */
 [data-testid="stBottomBlockContainer"] { padding-top: 0.75rem; padding-bottom: 0.75rem; }
 div[class*="st-key-tile-"] { padding: 1.4rem 1.5rem !important; }
 /* the per-kind counts on the Data page read one step below the totals */
@@ -102,13 +104,34 @@ div[class*="st-key-section-"] p { font-size: 0.78rem; font-weight: 600; letter-s
 .st-key-chats [data-testid="stButton"] button { justify-content: flex-start; text-align: left; min-height: 2.1rem; }
 .st-key-chats [data-testid="stButton"] button p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-key-chats [data-testid="stButton"] button > div { min-width: 0; }
-/* console: a compact monospace log */
+/* console panel on the right, under the top bar. "auto" (nobody has toggled it yet) is open on wide screens and
+   closed on narrow ones; "open" and "closed" are the visitor's choice. The page keeps clear of an open panel. */
+:root { --console-w: clamp(320px, 30vw, 440px); }
+[data-testid="stLayoutWrapper"]:has(> .st-key-console-open), [data-testid="stLayoutWrapper"]:has(> .st-key-console-auto),
+[data-testid="stLayoutWrapper"]:has(> .st-key-console-closed), [data-testid="stLayoutWrapper"]:has(> .st-key-topbar) {
+  position: absolute !important; height: 0 !important; margin: 0 !important; }  /* out of the page flow */
+.st-key-console-open, .st-key-console-auto { position: fixed !important; top: 3.5rem; right: 0; bottom: 0;
+  width: var(--console-w); z-index: 100; padding: 1rem 1rem 0.75rem; display: flex; flex-direction: column; }
+.st-key-console-closed { display: none !important; }
+[data-testid="stMain"]:has(.st-key-console-open), [data-testid="stMain"]:has(.st-key-console-auto) {
+  padding-right: var(--console-w); box-sizing: border-box; }  /* padding, not margin: the page keeps its width */
+body:has(.st-key-console-auto) .st-key-topbar .st-key-console-show { display: none; }  /* auto, wide: offer to hide */
+@media (max-width: 1100px) {
+  .st-key-console-auto { display: none !important; }
+  [data-testid="stMain"]:has(.st-key-console-auto) { padding-right: 0; }
+  body:has(.st-key-console-auto) .st-key-topbar .st-key-console-show { display: block; }  /* auto, narrow: offer to show */
+  body:has(.st-key-console-auto) .st-key-topbar .st-key-console-hide { display: none; }
+  .st-key-console-open { width: min(92vw, 440px); box-shadow: -12px 0 32px rgba(0,0,0,0.25); }  /* over the page */
+  [data-testid="stMain"]:has(.st-key-console-open) { padding-right: 0; }
+  .st-key-topbar [data-testid="stWidgetLabel"] p { display: none; }  /* switch only; its tooltip says what it is */
+}
+/* top bar controls: the style switch and the console button, left of Streamlit's own toolbar */
+.st-key-topbar { position: fixed !important; top: 0.55rem; z-index: 999991; width: auto !important; }
+.st-key-topbar [data-testid="stButton"] button { box-shadow: none !important; min-height: 2.1rem; }
+/* console: a compact monospace log that fills the panel and scrolls */
 .st-key-console-log, .st-key-console-log p, .st-key-console-log summary { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.78rem; }
-[data-testid="stLayoutWrapper"]:has(> .st-key-console-log) { height: auto !important; flex: 0 1 auto !important; }
-/* the log starts at a third of the screen; drag its bottom-right corner to make it taller or shorter.
-   No !important on height, so the size the browser sets while dragging wins. */
-div.st-key-console-log.st-key-console-log { height: min(300px, 32vh); flex: 0 0 auto !important; min-height: 4rem;
-  max-height: 80vh; resize: vertical; overflow: auto; }
+[data-testid="stLayoutWrapper"]:has(> .st-key-console-log) { flex: 1 1 0 !important; min-height: 0; height: auto !important; }
+div.st-key-console-log.st-key-console-log { height: 100% !important; max-height: none !important; overflow-y: auto; }
 .st-key-console-log > * { flex-shrink: 0 !important; }  /* lines keep their height; the log scrolls instead */
 .st-key-console-log p { margin: 0; line-height: 1.45; }
 .st-key-console-log [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }  /* undo Streamlit's -1rem (p has no margin here) */
@@ -169,7 +192,8 @@ div[class*="st-key-section-"] p {{ color: {accent} !important; opacity: 1; }}
 /* sidebar chats: the open one gets an indigo marker */
 .st-key-chats [data-testid="stButton"] button[kind="secondary"] {{ border-color: transparent !important;
   background: {"rgba(99,102,241,0.16)" if dark else "#EEF0FF"} !important; box-shadow: inset 3px 0 0 #4F46E5; }}
-.st-key-console details {{ border-radius: 12px !important; }}
+.st-key-console-open, .st-key-console-auto {{ background: {surface}; border-left: 1px solid {line};
+  box-shadow: -8px 0 24px rgba(79,70,229,0.06); }}
 </style>"""
 
 
@@ -231,7 +255,7 @@ div[class*="st-key-tile-"] [data-testid="stExpander"] details,
 [class*="st-key-exp-"] details {{ box-shadow: 4px 4px 0 {k}; }}
 .st-key-chats [data-testid="stButton"] button {{ box-shadow: none !important; transform: none !important; }}
 .st-key-chats [data-testid="stButton"] button[kind="tertiary"] {{ border-color: transparent !important; }}
-.st-key-console details {{ border: 2px solid {k} !important; border-radius: 0 !important; }}
+.st-key-console-open, .st-key-console-auto {{ background: {"#FFFBEF" if light else "#0C0E16"}; border-left: 3px solid {k}; }}
 div[class*="st-key-section-"] {{ border-top: 3px solid {k}; }}
 div[class*="st-key-section-"] p {{ opacity: 1; font-family: 'Space Grotesk', 'Inter', sans-serif !important; }}
 </style>""")
@@ -320,7 +344,7 @@ def node_panel(n, key):
     for t in card["tables"]:  # a profile reads better as a wrapping list than as a table with clipped cells
         st.markdown("\n".join(f"- **{r['About']}:** {r['Value']}" for r in t["rows"]))
     n_q = len(card["queries"])
-    st.caption(f"{n_q} Cypher quer{'y' if n_q == 1 else 'ies'} · {card['graph_ms']:g} ms · see the console below")
+    st.caption(f"{n_q} Cypher quer{'y' if n_q == 1 else 'ies'} · {card['graph_ms']:g} ms · in the console")
     work(f"details for {n['kind_label']} {n['label']} (clicked in the graph)", card["queries"], card["result"], card["ms"])
 
 
@@ -468,13 +492,43 @@ TAG = {"you": "blue", "model": "violet", "tool": "orange", "cypher": "green", "m
        "error": "red", "page": "gray"}
 
 
+def _show_console(show):
+    st.session_state.console_open = show
+
+
+def topbar():
+    """Controls at the right of the top bar: the style switch, and the button that shows or hides the console.
+    On Streamlit Community Cloud they sit left of its own Fork and GitHub buttons."""
+    right = "9rem" if ".streamlit.app" in (st.context.url or "") else "3.25rem"
+    # the page links centre in the top bar's remaining space, so they never run under these controls
+    st.html(f"""<style>.st-key-topbar {{ right: {right}; }}
+[data-testid="stTopNav"] {{ padding-right: calc({right} + 15rem) !important; }}
+@media (max-width: 1100px) {{
+  [data-testid="stTopNav"] {{ padding-right: calc({right} + 8.5rem) !important; }}
+  [data-testid="stTopNavLink"] {{ padding: 0.4rem 0.55rem !important; font-size: 0.95rem !important; }}
+}}</style>""")
+    shown = st.session_state.get("console_open")  # None until the visitor chooses: open on wide screens
+    with st.container(key="topbar", horizontal=True, vertical_alignment="center", gap="small", width="content"):
+        st.toggle("Neo-brutalist", value=True, key="brutal",
+                  help="Thick borders, hard shadows, flat colours. Off: the modernist look. The layout stays the same.")
+        if shown is not False:
+            st.button("Console", icon=":material/right_panel_close:", key="console-hide", type="tertiary",
+                      on_click=_show_console, args=(False,), help="Hide the console")
+        if shown is not True:
+            st.button("Console", icon=":material/right_panel_open:", key="console-show", type="tertiary",
+                      on_click=_show_console, args=(True,), help="Show the console")
+
+
 def console():
-    """The console drawer pinned to the bottom of the page. Made on first use in each run (app.py clears it when
-    a run starts), so on the Ask page it sits below the chat input."""
+    """The console panel on the right: made once per run by app.py, before the page, so every page can write to it
+    (also while a turn is still running). Returns the log to write lines into."""
     if st.session_state.get("_console") is None:
-        with st.bottom:
-            drawer = st.expander("Console", icon=":material/terminal:", key="console")
-        st.session_state["_console"] = drawer.container(height=340, autoscroll=True, key="console-log", gap=None)
+        mode = {None: "auto", True: "open", False: "closed"}[st.session_state.get("console_open")]
+        with st.container(key=f"console-{mode}", gap="small"):
+            st.markdown("**:material/terminal: Console**")
+            st.caption("What runs in the background, as it happens: model calls, tool calls and every Cypher query. "
+                       "Open a query to see its parameters and response.")
+            st.session_state["_console"] = st.container(height=400, autoscroll=True, key="console-log", gap=None)
         st.session_state["_console_lines"] = 0
     return st.session_state["_console"]
 

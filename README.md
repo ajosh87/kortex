@@ -163,10 +163,12 @@ Four pages, top navigation. The sidebar holds your name, the model, the style sw
 | **Memory** | What the agent remembers of the open chat, from your memory graph: each question and answer, and a graph of the Kubernetes nodes each one points at. |
 | **Data** | Node counts by kind, the schema as found in the data (with relationship counts), and the exact source commits. |
 
-**Console.** Every page has a console drawer pinned to the bottom: a timestamped log of what ran in the
-background, written while it happens. Model calls (model, time, tokens, cost, which tools it asked for), tool
-calls with their arguments, every Cypher query (open a line to see the query, its parameters and its response
-rows), the memory write, and the turn's totals. On Explore, Memory and Data it shows the queries behind the page.
+**Layout.** Like a desktop chat app: your chats on the left, the conversation in the middle, and the **console**
+on the right, with the style switch and a button to hide or show the console at the right of the top bar. The
+console is a timestamped log of what runs in the background, written while it happens: model calls (model, time,
+tokens, cost, which tools it asked for), tool calls with their arguments, every Cypher query (open a line to see
+the query, its parameters and its response rows), the memory write, and the turn's totals. On Explore, Memory and
+Data it shows the queries behind the page. It is open by default; on narrow screens it starts hidden.
 
 **Interactive graphs.** Graphs are drawn with Cytoscape.js in a small Streamlit custom component (`ui_graph.py`):
 drag, Ctrl + scroll or the buttons to zoom, and click a node to see its profile in the app (approvers, owning
@@ -175,7 +177,7 @@ graph by `tools.node_card()`. A plain scroll keeps scrolling the page.
 
 **Look and feel.** Content sits in a readable column with room between elements. Overview screens (the Ask
 landing page, Data) use a bento grid of tiles that wraps on narrow screens; answer and detail views stay as
-simple stacked sections, so tiles never nest. A sidebar toggle switches a neo-brutalist style on or off (thick
+simple stacked sections, so tiles never nest. A switch in the top bar turns a neo-brutalist style on or off (thick
 borders, hard shadows, flat colours, bold type, square graph nodes) without changing the layout. The style is a
 small stylesheet in `ui.apply_style()` that targets our own keys and Streamlit's `data-testid` attributes; with
 it off, the app uses the plain light/dark theme from `config.toml`.

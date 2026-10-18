@@ -88,7 +88,7 @@ else:
         st.title("Ask Kortex")
         st.markdown("Who owns code, which design decisions constrain it, what could break and who knows it. "
                     "Every answer is a walk through a FalkorDB graph of the Kubernetes project, and the console "
-                    "at the bottom shows each step as it runs.")
+                    "on the right shows each step as it runs.")
         ui.section("Try a question", "bolt")
         with st.container(horizontal=True, gap="large", key="starters"):  # a grid that wraps: 3 across on wide screens
             for i in range(len(STARTERS)):
