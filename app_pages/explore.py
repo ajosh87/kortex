@@ -17,7 +17,10 @@ def search(text):
 
 @st.cache_data(ttl=600, max_entries=200, show_spinner="Walking the graph…")
 def run(tool, kind, key):
-    return T.explore(tool, kind, key)
+    r = T.explore(tool, kind, key)
+    if r["status"] == "error":
+        raise RuntimeError(r["error"])  # not cached: a passing database hiccup is not kept for everyone
+    return r
 
 
 st.title("Explore")
@@ -63,7 +66,12 @@ if not choice or not picked:
 st.caption(f":material/conversion_path: **The walk:** {next(a['how'] for a in actions if a['tool'] == picked)}")
 ui.section("Result", "task_alt")
 
-r = run(picked, choice["kind"], choice["key"])
+try:
+    r = run(picked, choice["kind"], choice["key"])
+except RuntimeError as e:
+    ui.work(f"▶ {picked} on {choice['label']} (Explore, no model)", [], f"Failed: {e}", failed=True)
+    st.error(f"This walk failed: {e}. Try again in a moment.", icon=":material/error:")
+    st.stop()
 ui.work(f"▶ {ui.call(r['tool'], r['args'])} (Explore, no model)", r["queries"], r["result"], r["ms"])
 with ui.tile("explore-summary", fill="accent"):
     st.markdown(f"#### {r['title']}")

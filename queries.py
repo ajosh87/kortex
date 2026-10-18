@@ -218,7 +218,7 @@ def critical_code(scope, limit=12):
     approve each one and how many packages import it directly. Critical and thinly owned means risk."""
     return q("""
         CALL algo.pageRank('Dir', 'IMPORTS') YIELD node, score
-        WITH node AS d, score WHERE d.path STARTS WITH $scope
+        WITH node AS d, score WHERE $scope = '' OR d.path = $scope OR d.path STARTS WITH ($scope + '/')
         WITH d, score ORDER BY score DESC LIMIT $limit""" + _NEAREST_APPROVERS.format(carry="d, score") + """
         WITH d, score, owners_path, up, collect(DISTINCT coalesce(m.handle, o.handle)) AS approvers
         OPTIONAL MATCH (x:Dir)-[:IMPORTS]->(d)
@@ -232,7 +232,7 @@ def chokepoints(scope, limit=8):
     return q("""
         CALL algo.betweenness({nodeLabels: ['Dir'], relationshipTypes: ['IMPORTS'], samplingSize: 1000, samplingSeed: 42})
         YIELD node, score
-        WITH node AS d, score WHERE d.path STARTS WITH $scope AND score > 0
+        WITH node AS d, score WHERE ($scope = '' OR d.path = $scope OR d.path STARTS WITH ($scope + '/')) AND score > 0
         RETURN d.path AS package, round(score) AS score ORDER BY score DESC LIMIT $limit""", {"scope": scope, "limit": limit})
 
 
@@ -246,13 +246,16 @@ def decision_code_owners(number):
 
 
 def single_points_of_failure(sig, limit=10):
-    """Folders a SIG owns where very few people can approve, and the people they depend on most."""
+    """Folders a SIG owns where very few people can approve: everyone in the folder's own OWNERS file and in the
+    parent OWNERS files it inherits (up to a no_parent_owners cut), teams expanded to people."""
     return q(_SPOF, {"sig": sig, "limit": limit})
 
 
 _SPOF = """
 MATCH (s:SIG {name: $sig})<-[:LABELED]-(d:Dir)
-MATCH (d)-[:APPROVER]->(o)
+MATCH p = (d)-[:IN*0..]->(a:Dir)
+WHERE none(n IN nodes(p)[0..size(nodes(p)) - 1] WHERE coalesce(n.no_parent_owners, false))
+MATCH (a)-[:APPROVER]->(o)
 OPTIONAL MATCH (m:Person)-[:MEMBER_OF]->(o:Team)
 WITH d, collect(DISTINCT coalesce(m.handle, o.handle)) AS approvers
 WHERE size(approvers) > 0
@@ -320,27 +323,32 @@ def search(text, limit=10):
             RETURN 'Person' AS kind, p.handle AS key, p.handle AS label
             ORDER BY p.handle <> $t, NOT p.handle STARTS WITH $t, size(p.handle) LIMIT $limit""", {"t": t, "limit": limit})
     number = re.fullmatch(r"(?:kep)?[\s#-]*(\d{1,5})", t)
+    # Best matches first: the exact name (or a folder whose last part is it, or the SIG sig-<it>), then names that
+    # start with it, then the shortest. Without this the UNION comes back in no order and the limit cuts at random.
     return q("""
         CALL {
           MATCH (k:KEP) WHERE k.number = $n
-          RETURN 'KEP' AS kind, k.number AS key, k.title AS label
+          RETURN 'KEP' AS kind, k.number AS key, k.title AS label, $t AS m
           UNION
           MATCH (k:KEP) WHERE toLower(k.title) CONTAINS $t
-          RETURN 'KEP' AS kind, k.number AS key, k.title AS label
+          RETURN 'KEP' AS kind, k.number AS key, k.title AS label, toLower(k.title) AS m
           UNION
           MATCH (g:FeatureGate) WHERE toLower(g.name) CONTAINS $t
-          RETURN 'FeatureGate' AS kind, g.name AS key, g.name AS label
+          RETURN 'FeatureGate' AS kind, g.name AS key, g.name AS label, toLower(g.name) AS m
           UNION
           MATCH (d:Dir) WHERE toLower(d.path) CONTAINS $t AND (d)-[:APPROVER|IMPORTS|CHECKS_GATE]-()
-          RETURN 'Dir' AS kind, d.path AS key, d.path AS label
+          RETURN 'Dir' AS kind, d.path AS key, d.path AS label, toLower(d.path) AS m
           UNION
           MATCH (s:SIG) WHERE toLower(s.name) CONTAINS $t OR toLower(coalesce(s.title, '')) CONTAINS $t
-          RETURN 'SIG' AS kind, s.name AS key, s.title AS label
+          RETURN 'SIG' AS kind, s.name AS key, s.title AS label, toLower(s.name) AS m
           UNION
           MATCH (p:Person) WHERE p.handle CONTAINS $t
-          RETURN 'Person' AS kind, p.handle AS key, p.handle AS label
+          RETURN 'Person' AS kind, p.handle AS key, p.handle AS label, p.handle AS m
         }
-        RETURN kind, key, label LIMIT $limit""", {"t": t, "n": number.group(1) if number else None, "limit": limit})
+        WITH kind, key, label, m,
+             CASE WHEN m = $t OR m ENDS WITH ('/' + $t) OR m = ('sig-' + $t) THEN 0 WHEN m STARTS WITH $t THEN 1 ELSE 2 END AS rank
+        RETURN kind, key, label ORDER BY rank, size(m), m LIMIT $limit""",
+             {"t": t, "n": number.group(1) if number else None, "limit": limit})
 
 
 def topic_nodes(about, per_node=40):
@@ -474,7 +482,7 @@ def stats():
     commits = [{"repo": f"kubernetes/{r}", "commit": m[f"{r}_commit"][:10], "url": f"{GITHUB}/{r}/commit/{m[f'{r}_commit']}"}
                for r in repos if m.get(f"{r}_commit")]
     schema = list(zip(m.get("schema_src", []), m.get("schema_rel", []), m.get("schema_dst", []), m.get("schema_n", [])))
-    schema_graph = {"nodes": [node(k, k, label=KIND_LABEL.get(k, k)) for k in dict.fromkeys(x for a, _, b, _ in schema for x in (a, b))],
+    schema_graph = {"nodes": [{**node(k, k, label=KIND_LABEL.get(k, k)), "url": None} for k in dict.fromkeys(x for a, _, b, _ in schema for x in (a, b))],
                     "edges": [{"src": f"{a}:{a}", "rel": f"{rel} · {n:,}", "dst": f"{b}:{b}"} for a, rel, b, n in schema]}
     schema_graph |= {"total_nodes": len(schema_graph["nodes"]), "shown_nodes": len(schema_graph["nodes"])}
     return {"counts": counts, "nodes": sum(m.get("kind_counts", [])), "relationships": m.get("relationships", 0),

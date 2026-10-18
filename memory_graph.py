@@ -138,9 +138,10 @@ def session_turns(user, session):
         MATCH (:Session {id: $session})-[:HAS]->(t:Turn)
         OPTIONAL MATCH (t)-[:MENTIONS]->(r:Ref)
         WITH t, collect(CASE WHEN r IS NULL THEN NULL ELSE {kind: r.kind, key: r.key, title: r.title} END) AS refs
-        RETURN t.question AS question, t.answer AS answer, t.at AS at, refs ORDER BY at""", {"session": session})
-    return [{**r, "when": when(r["at"]), "refs": [node(x["kind"], x["key"], title=x.get("title")) for x in r["refs"] if x]}
-            for r in rows]
+        RETURN t.question AS question, t.answer AS answer, t.at AS at, t.unverified AS unverified, refs
+        ORDER BY at""", {"session": session})
+    return [{**r, "when": when(r["at"]), "unverified": r["unverified"] or [],
+             "refs": [node(x["kind"], x["key"], title=x.get("title")) for x in r["refs"] if x]} for r in rows]
 
 
 def turn_profile(user, session, n):

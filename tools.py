@@ -52,7 +52,7 @@ DEFAULTS = {"about": "anything", "since": "30 days ago", "scope": "pkg"}
 
 
 def _kep_num(s):
-    return str(s).upper().replace("KEP-", "").replace("KEP", "").lstrip("#").strip()
+    return str(s).upper().replace("KEP-", "").replace("KEP", "").strip().lstrip("#").strip()
 
 
 def _arg(k, v):
@@ -281,13 +281,15 @@ def blast_radius(path: str):
 def find_experts(path: str):
     """People who recently merged pull requests touching a folder or anything below it."""
     d = Q.nearest_dir(path)
-    rows = Q.experts(d, 10)
+    rows = Q.experts(d, 11)
+    more, rows = len(rows) > 10, rows[:10]  # one extra row says whether the list was cut
     folder = node("Dir", d)
     edges = []
     for r in rows[:6]:
         pr = node("PR", r["examples"][0])
         edges += [(node("Person", r["person"]), f"authored ({r['prs']} PRs here)", pr), (pr, "touches", folder)]
-    return step({"folder": d, "experts": rows}, f"{len(rows)} people merged changes here" + (
+    return step({"folder": d, "experts": rows, **({"note": "the 10 most active only; more people merged changes here"} if more else {})},
+                f"{'The 10 most active of more' if more else len(rows)} people merged changes here" + (
         f", most active: @{rows[0]['person']} ({rows[0]['prs']} PRs)" if rows else ""), edges,
         [folder] + [node("Person", r["person"]) for r in rows] + [node("PR", n) for r in rows for n in r["examples"]],
         tables=[table("Recent contributors", [{"Person": link("Person", r["person"]), "Merged PRs": r["prs"],
@@ -338,7 +340,10 @@ def decision_trail(number: str):
 def single_points_of_failure(sig: str):
     """For a SIG (e.g. 'sig-node'): folders with the fewest named approvers, and the people who approve
     the most folders. Answers bus-factor questions like 'who would we miss most?'"""
+    sig = sig.strip().lower().replace(" ", "-")
     sig = sig if sig.startswith("sig-") else f"sig-{sig}"
+    if not Q.sig_profile(sig):
+        return step({"error": f"{sig} is not a SIG in the graph"}, f"{sig} is not in the graph (search_graph finds SIG names)")
     thin, busy = Q.single_points_of_failure(sig, 10), Q.busiest_approvers(sig, 10)
     s = node("SIG", sig)
     single = [r for r in thin if r["approver_count"] == 1]
@@ -348,7 +353,9 @@ def single_points_of_failure(sig: str):
               + (f" · thinnest has {thin[0]['approver_count']}" if thin and not single else "")
               + (f" · busiest approver: @{busy[0]['person']} ({busy[0]['dirs']} folders)" if busy else ""))
     return step({"sig": sig, "folders_with_a_single_approver": [r["dir"] for r in single],
-                 "note": "approver counts include every member of approver teams",
+                 "note": "approver counts include approvers inherited from parent OWNERS files (unless cut by "
+                         "no_parent_owners) and every member of approver teams; busiest_approvers counts folders "
+                         "whose own OWNERS file names them",
                  "thinnest_folders": thin, "busiest_approvers": busy}, result, edges,
                 [s] + [node("Person", b["person"]) for b in busy] + [node("Dir", r["dir"]) for r in thin]
                 + [node("Person", p) for r in thin for p in r["approvers"]],
@@ -408,15 +415,23 @@ def recent_changes(path: str, since: str = ""):
     'what changed since last time', pass the date of the earlier turn from recall_memory. Only covers changes
     up to when the data was loaded."""
     d = Q.nearest_dir(path)
-    since = since.strip()[:10] or (date.today() - timedelta(days=30)).isoformat()
-    prs, keps = Q.recent_prs(d, since), Q.recent_keps(d, since)
+    since = since.strip()[:10]
+    if since and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", since):  # dates compare as text: anything else matches nothing
+        return step({"error": f"since must be a date like 2026-10-01, not “{since}”"}, f"“{since}” is not a date (YYYY-MM-DD)")
+    since = since or (date.today() - timedelta(days=30)).isoformat()
+    prs, keps = Q.recent_prs(d, since, 31), Q.recent_keps(d, since, 11)
+    cut = {"merged_prs": len(prs) > 30, "updated_keps": len(keps) > 10}
+    prs, keps = prs[:30], keps[:10]
     folder = node("Dir", d)
     edges = [(node("Person", r["author"]), "authored", node("PR", r["pr"], title=r["title"])) for r in prs if r["author"]]
     edges += [(node("PR", r["pr"], title=r["title"]), f"touches ({r['merged']})", folder) for r in prs]
     edges += [(node("KEP", k["kep"], title=k["title"]), f"updated {k['updated']}", folder) for k in keps]
     loaded = Q.stats()["source"].get("loaded_at", "?")
-    return step({"folder": d, "since": since, "data_loaded_at": loaded, "merged_prs": prs, "updated_keps": keps},
-                f"Since {since}: {len(prs)} merged PRs and {len(keps)} updated KEPs (data as of {loaded})", edges, [folder],
+    return step({"folder": d, "since": since, "data_loaded_at": loaded, "merged_prs": prs, "updated_keps": keps,
+                 **({"note": "lists cut to the most recent: " + ", ".join(k for k, v in cut.items() if v) + " has more"}
+                    if any(cut.values()) else {})},
+                f"Since {since}: {'the 30 most recent of more' if cut['merged_prs'] else len(prs)} merged PRs and "
+                f"{'10 of more' if cut['updated_keps'] else len(keps)} updated KEPs (data as of {loaded})", edges, [folder],
                 tables=[table("Merged pull requests", [{"PR": link("PR", r["pr"]), "Title": r["title"], "Merged": r["merged"],
                                                         "Author": link("Person", r["author"]) if r["author"] else ""} for r in prs],
                               {"PR": "PR", "Author": "Person"}),
@@ -486,7 +501,7 @@ def best_reviewers(path: str):
     """The best reviewers for a change to a folder: people who can approve it (nearest OWNERS file) AND merged
     changes there recently come first, then approvers, then recent contributors."""
     d = Q.nearest_dir(path)
-    near, experts = _nearest(Q.owners(d, "APPROVER")), {r["person"]: r for r in Q.experts(d, 25)}
+    near, experts = _nearest(Q.owners(d, "APPROVER")), {r["person"]: r for r in Q.experts(d, 500)}  # all of them
     approvers = {p for r in near for p in _people(r)}
     both = sorted(approvers & experts.keys(), key=lambda p: -experts[p]["prs"])
     folder = node("Dir", d)
@@ -560,8 +575,10 @@ def read_doc(path: str):
       response_format="content_and_artifact")
 def run_cypher(cypher: str):
     def body():
-        rows = ro(cypher)[:50]
-        return step(rows, f"{len(rows)} rows", tables=[table("Rows", [{k: json.dumps(v, default=str) if isinstance(v, (list, dict)) else v
+        rows = ro(cypher)[:51]  # one extra row says whether there were more
+        cut, rows = len(rows) > 50, rows[:50]
+        return step({"rows": rows, **({"note": "only the first 50 rows; the query returned more"} if cut else {})},
+                    "the first 50 rows (there are more)" if cut else f"{len(rows)} rows", tables=[table("Rows", [{k: json.dumps(v, default=str) if isinstance(v, (list, dict)) else v
                                                                        for k, v in r.items()} for r in rows[:20]])])
     content, artifact = record(body)
     if artifact["error"]:
@@ -662,11 +679,15 @@ def _card(kind, key, user=None):
                                                   ("Tech leads", _join(r["leads"], "@")), ("Subprojects", _join(r["subprojects"]))))])
     if kind == "Team":
         r = (Q.team_profile(key) or [None])[0]
+        if not r:
+            return step({}, f"Team {key} is not in the graph")
         return step({}, f"Team {key}: {len(r['members'])} members, approver for {len(r['approves'])} folders",
                     tables=[table("About", _facts(("Members", _join(r["members"], "@", 20)), ("Approves", _join(r["approves"])),
                                                   ("Reviews", _join(r["reviews"]))))])
     if kind == "FeatureGate":
         r = (Q.gate_profile(key) or [None])[0]
+        if not r:
+            return step({}, f"Feature gate {key} is not in the graph")
         keps = [k for k in r["keps"] if k.get("kep")]
         return step({}, f"Feature gate {key}: introduced by {len(keps)} KEPs, checked in {len(r['code'])} folders",
                     tables=[table("About", _facts(("Introduced by", _join(f"KEP-{k['kep']} {k['title']} ({k['stage']})" for k in keps)),
@@ -680,6 +701,8 @@ def _card(kind, key, user=None):
                                                   ("Touched folders", _join(r["dirs"]))))])
     if kind == "Component":
         r = (Q.component_profile(key) or [None])[0]
+        if not r:
+            return step({}, f"Binary {key} is not in the graph")
         return step({}, f"Binary {key}: lives in {len(r['dirs'])} folders, affected by {r['gates']} feature gates",
                     tables=[table("About", _facts(("Code", _join(r["dirs"]))))])
     if kind == "Doc":
@@ -732,7 +755,7 @@ ACTIONS = {
             ("find_experts", "Who knows it", ":material/groups:",
              "People who merged pull requests touching this folder or anything below it.", lambda k: {"path": k}),
             ("recent_changes", "Recent changes", ":material/update:",
-             "Pull requests merged here and KEPs behind this code updated in the last 30 days of the loaded history.",
+             "Pull requests merged here and KEPs behind this code updated in the last 30 days (up to when the data was loaded).",
              lambda k: {"path": k})],
     "KEP": [("kep_details", "Record", ":material/description:",
              "The KEP itself: status, stage, milestone, owning SIG, authors, approvers, feature gates and the code that "

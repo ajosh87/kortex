@@ -28,6 +28,7 @@ if missing_data():  # a fresh install, or a free cloud instance that restarted e
     with st.spinner(f"Restoring {' and '.join(missing_data())} from the snapshot (first start only, about a minute)…"):
         snapshot.ensure()
     missing_data.clear()
+    st.cache_data.clear()  # results read before the restore came from an empty graph
 
 if "chats" not in st.session_state:
     st.session_state.chats = {}  # session id -> chat messages, for chats opened in this browser session
@@ -67,7 +68,8 @@ with st.sidebar:
                 st.switch_page("app_pages/ask.py")
 
     ui.section("Settings", "tune")
-    st.text_input("Your name", value="demo", key="user", help="Chats and memory are kept per name, across sessions.")
+    st.text_input("Your name", value="demo", key="user", help="Chats and memory are kept per name, across sessions.",
+                  on_change=lambda: st.session_state.update(session=str(uuid.uuid4())[:8]))
     default_provider, default_model = M.split_spec(M.MODEL)
     providers = M.providers()
     demo_left = M.demo_left(st.session_state.get("demo_used", 0))

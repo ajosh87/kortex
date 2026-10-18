@@ -46,8 +46,10 @@ _CSS = """
 _JS = """
 const LIB = "%s"
 const charts = new WeakMap()
+const pending = new WeakMap()  // the latest draw requested for each element
 
 function teardown(parentElement) {
+  pending.delete(parentElement)
   const current = charts.get(parentElement)
   if (!current) return
   document.removeEventListener("scroll", current.onScroll, true)
@@ -61,7 +63,6 @@ function draw(parentElement, data, setTriggerValue) {
   const root = parentElement.querySelector(".kx")
   const box = parentElement.querySelector(".kx-graph")
   const hint = parentElement.querySelector(".kx-hint")
-  box.style.height = data.height + "px"
   hint.textContent = data.hint
   for (const [k, v] of Object.entries(data.chrome)) root.style.setProperty("--kx-" + k, v)
   const signature = JSON.stringify([data.elements, data.style, data.layout, data.height])
@@ -72,9 +73,13 @@ function draw(parentElement, data, setTriggerValue) {
     return
   }
   teardown(parentElement)
+  box.style.height = data.height + "px"
+  const token = {}  // a newer draw (or unmount) before the library loads makes this one stale
+  pending.set(parentElement, token)
   const loading = parentElement.querySelector(".kx-loading")
   loading.style.display = "flex"  // until the library is loaded and the layout has run
   import(LIB).then(({ default: cytoscape }) => {
+    if (pending.get(parentElement) !== token) return
     const cy = cytoscape({
       container: box, elements: data.elements, style: data.style, layout: data.layout,
       minZoom: 0.15, maxZoom: 3, boxSelectionEnabled: false,

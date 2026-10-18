@@ -17,6 +17,7 @@ Events that ran Cypher (step_end, resumed, memory) carry it as `queries`.
 
     uv run agent.py "Who must approve a change to pkg/kubelet/eviction?"
 """
+import json
 import os
 import sys
 import time
@@ -131,7 +132,8 @@ def transcript(user, session):
     return [m for i, t in enumerate(turns) for m in (
         {"role": "user", "content": t["question"]},
         {"role": "assistant", "events": [{"type": "recalled", "at": t["at"], "when": t["when"], "text": t["answer"],
-                                          "linked": len(t["refs"]), "queries": queries if i == 0 else []}]})]
+                                          "linked": len(t["refs"]), "unverified": t["unverified"],
+                                          "queries": queries if i == 0 else []}]})]
 
 
 def earlier_turns(agent, user, session):
@@ -196,7 +198,8 @@ def totals(calls, steps, requested):
     models = list(dict.fromkeys(c["model"] for c in calls if c["model"]))
     tokens = bool(calls) and all(c["tokens_in"] is not None for c in calls)
     priced = bool(calls) and all(c["cost"] is not None for c in calls)
-    return {"requested": name, "served": models, "fallback": any(m != name for m in models),
+    same = lambda m: m == name or m.startswith(name + "-") or name.endswith("/" + m)
+    return {"requested": name, "served": models, "fallback": any(not same(m) for m in models),
             "llm_ms": sum(c["ms"] for c in calls), "llm_calls": len(calls),
             "graph_ms": round(sum(s["graph_ms"] for s in steps), 1), "queries": sum(len(s["queries"]) for s in steps),
             "steps": len(steps),
@@ -227,6 +230,9 @@ def _turn(agent, user, session, question, requested):
     steps, started, calls, text, feed = [], {}, [], "", ANS.stream_cleaner()
     yield {"type": "question", "text": question}
     try:
+        state = agent.get_state({"configurable": {"thread_id": session}}).values.get("messages") or []
+        if state and getattr(state[-1], "tool_calls", None):
+            agent.checkpointer.delete_thread(session)
         history, queries = earlier_turns(agent, user, session)
         if history:
             yield {"type": "resumed", "turns": len(history) // 2, "queries": queries}
@@ -267,10 +273,16 @@ def _turn(agent, user, session, question, requested):
     final = ANS.linkify(ANS.clean(text).strip(), refs)
     yield {"type": "answer", "text": final}
     graph = combine_graph(steps)
-    flagged = ANS.unverified(final, refs)
-    used = list({n["id"]: n for n in refs}.values())[:MEMORY_LINKS]  # every node the tools returned, not just the picture
-    linked, queries = traced(MG.remember, user, session, question, final, used, None, flagged)
-    yield {"type": "memory", "linked": linked, "queries": queries}
+    seen = json.dumps([s.get("tables") for s in steps], default=str).lower()  # e.g. run_cypher rows, which hold no nodes
+    flagged = ANS.unverified(final, refs, seen)
+    # every node the tools returned (not just the picture), except what recall brought back from older turns
+    used = list({n["id"]: n for s in steps if s["tool"] != "recall_memory" for n in s["nodes"]}.values())[:MEMORY_LINKS]
+    try:
+        linked, queries = traced(MG.remember, user, session, question, final, used, None, flagged)
+        yield {"type": "memory", "linked": linked, "queries": queries}
+    except Exception as e:  # the answer stands; only saving it failed (e.g. the database connection dropped)
+        linked = 0
+        yield {"type": "memory", "linked": 0, "queries": [], "error": f"not saved to memory: {e}"}
     yield {"type": "done", **totals(calls, steps, requested), "total_ms": round((time.time() - t0) * 1000),
            "graph": graph, "memory_linked": linked, "follow_ups": ANS.follow_ups(steps), "unverified": flagged}
 

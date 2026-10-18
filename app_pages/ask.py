@@ -40,6 +40,14 @@ def get_agent(spec, demo):
     return st.session_state.agent
 
 
+def safe(stream):
+    """The turn's events; an exception while it runs becomes the turn's last event (an error), so the page stays."""
+    try:
+        yield from stream
+    except Exception as e:
+        yield M.explain_error(e)
+
+
 def queue(question):
     st.session_state.pending = question
 
@@ -70,7 +78,8 @@ used = st.session_state.get("demo_used", 0)  # questions asked on the app's demo
 locked = M.needs_key(st.session_state.get("api_key"), used)  # this deployment needs the visitor's own key
 demo = M.REQUIRE_USER_KEY and not (st.session_state.get("api_key") or "").strip() and not locked
 spec = M.MODEL if demo else st.session_state.spec  # the demo key only runs the default model
-pending = None if locked else st.session_state.pop("pending", None)  # a starter or follow-up button was clicked
+pending = st.session_state.pop("pending", None)  # a starter or follow-up button was clicked
+pending = None if locked else pending
 if locked:
     with st.bottom:
         st.caption(":material/key: Add your API key under **Model** in the sidebar to ask"
@@ -116,7 +125,7 @@ for i, msg in enumerate(messages):
         ui.log_event(ev)
     with st.chat_message("assistant"):
         latest = i == last and not prompt
-        ui.render_turn(msg["events"], turn=i, latest=latest, on_follow_up=queue if latest else None)
+        ui.render_turn(msg["events"], turn=i, latest=latest, on_follow_up=queue if latest and not locked else None)
 
 if prompt:
     if demo:
@@ -129,6 +138,6 @@ if prompt:
                                   requested=spec)
         except Exception as e:  # building the model failed (bad provider, missing credentials)
             stream = iter([M.explain_error(e)])
-        events = ui.render_turn(ui.logged(stream), turn=len(messages), live=True, on_follow_up=queue)
+        events = ui.render_turn(ui.logged(safe(stream)), turn=len(messages), live=True, on_follow_up=queue)
     messages.append({"role": "assistant", "events": events})
     st.rerun()  # redraw from the stored turn, so the sidebar lists this chat

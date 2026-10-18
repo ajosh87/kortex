@@ -59,13 +59,19 @@ Conversation memory is **not** in this graph. Each user has a memory graph of th
 (:Turn)-[:MENTIONS]->(:Ref {id, kind, key, title})     every node the turn's tools returned, by its key in the Kubernetes graph
 ```
 
-About 10,100 nodes and 33,500 relationships: 586 OWNERS files, ~645 KEPs with their summaries, 24 SIGs,
-~1,200 merged PRs, Go imports for the kubelet and scheduler, 224 community documents. The **Data** page shows the exact counts,
+About 7,200 nodes and 26,900 relationships: 586 OWNERS files, 680 KEPs with their summaries, 24 SIGs,
+~1,200 merged PRs, ~2,000 Go imports from the kubelet and scheduler (into the rest of the repo and its staging
+modules such as client-go), 224 community documents. The **Data** page shows the exact counts,
 the schema as found in the data, and the commits it was loaded from.
 
 Data cleaning at load time: SIG names misspelled in KEP files (e.g. `sig-scheduler`) are mapped to the real
 SIG; placeholders (`tbd`) and group names (`sig-node-leads`) are not loaded as people; YAML with invalid
-dates is read as plain text instead of being skipped.
+dates is read as plain text instead of being skipped. KEPs nested one folder deeper (kubeadm, cloud providers)
+are found; the template's `NNNN` and placeholder `0000` numbers are skipped, and when two files share a number
+the one not marked replaced wins. Only an OWNERS file's top-level lists and its `".*"` filter apply to the whole
+folder (other filters cover some files only, e.g. go.mod). The shallow clone's first commit has no parent, so
+git would list the whole tree as its change: its folders are left out. Handles lose stray quotes, and KEP
+component names are split and mapped to binary names (`scheduler` -> `kube-scheduler`).
 
 ## The Cypher and graph algorithms the product depends on
 

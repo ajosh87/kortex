@@ -12,11 +12,17 @@ def is_marker(chunk):
     return chunk.startswith("【") or bool(re.fullmatch(rf"\[(?:{TOOL_NAMES})\]", chunk))
 
 
+def no_images(text):
+    """No images: an image URL is fetched the moment the answer renders, so text planted in the data could use one
+    to send what is on screen to another server. Inline images, reference-style ones and reference definitions
+    go. Also used on the partial answer while it streams."""
+    text = re.sub(r"!\[[^\]]*\](?:\([^)]*\)|\[[^\]]*\])", "", text)
+    return re.sub(r"(?m)^ {0,3}\[[^\]\n]+\]:\s*\S+.*$", "", text)
+
+
 def clean(text):
     text = re.sub("[‐‑]", "-", text)  # models write non-breaking hyphens in handles and paths (@ahg‑g)
-    # no images: an image URL is fetched the moment the answer renders, so text planted in the data could use one
-    # to send what is on screen to another server
-    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+    text = no_images(text)
     text = re.sub(r"\s*【[^】\n]*(?:】|$)", "", text, flags=re.M)  # closed, or left open until the end of the line
     return re.sub(rf"\s*\[(?:{TOOL_NAMES})\]", "", text)
 
@@ -82,15 +88,18 @@ def linkify(text, refs):
     return "".join(out)
 
 
-def unverified(text, refs):
+def unverified(text, refs, seen=""):
     """Handles, KEPs and PR numbers the answer names that no tool returned this turn (outside code blocks):
-    possibly invented, or remembered from training data. Shown with the answer so readers can tell."""
+    possibly invented, or remembered from training data. Shown with the answer so readers can tell. `seen` is the
+    text of the tools' result tables (lowercase): a name found there was returned too, e.g. by run_cypher."""
     known = {(n["kind"], n["key"].lower()) for n in refs}
     prose = re.sub(r"```.*?```", "", text, flags=re.S)
+    prose = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", prose)  # a name inside a link the model wrote counts too
     found = ([("Person", h, f"@{h}") for h in re.findall(r"(?<![\w\[/@])@([A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9])", prose)]
              + [("KEP", k, f"KEP-{k}") for k in re.findall(r"(?<![\w\[/-])KEP[\s\-–]?(\d{1,5})\b", prose)]
              + [("PR", n, f"#{n}") for n in re.findall(r"(?<![\w\[&])#(\d{4,7})\b", prose)])
-    return list(dict.fromkeys(label for kind, key, label in found if (kind, key.lower()) not in known))
+    return list(dict.fromkeys(label for kind, key, label in found
+                              if (kind, key.lower()) not in known and not re.search(rf"\b{re.escape(key.lower())}\b", seen)))
 
 
 # Views worth suggesting next, by what a step was about: (argument, tool, full question, short label)

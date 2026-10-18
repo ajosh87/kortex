@@ -61,7 +61,8 @@ def make_model(spec=MODEL, api_key=None, demo=False):
     """'provider:model' -> chat model. e.g. openrouter:openai/gpt-oss-120b, groq:openai/gpt-oss-120b,
     anthropic:claude-sonnet-5-5, openai:gpt-5-mini, bedrock_converse:us.amazon.nova-pro-v1:0. api_key overrides the
     env var. demo: a demo question on the server's key, which always runs the default MODEL."""
-    own = bool((api_key or "").strip())
+    api_key = (api_key or "").strip() or None  # a pasted key often ends with a space or newline
+    own = bool(api_key)
     demo = demo and not own and demo_left(0) > 0
     spec = MODEL if demo else spec
     provider, name = split_spec(spec)
@@ -71,6 +72,8 @@ def make_model(spec=MODEL, api_key=None, demo=False):
         raise ValueError("own-key: this deployment runs only with the visitor's own API key")
     server_key = os.getenv(KEY_ENV[provider]) if KEY_ENV[provider] else None
     key = api_key if own else (server_key if demo or not REQUIRE_USER_KEY else None)
+    if provider in ("openrouter", "openai") and not key:  # else the OpenAI SDK would send OPENAI_API_KEY to OpenRouter
+        raise ValueError(f"api_key: no {KEY_ENV[provider]} set")
     if provider == "openrouter":  # OpenAI-compatible API; OpenRouter tries FALLBACKS if the model fails or is rate-limited
         backups = [m for m in FALLBACKS if m != name]
         body = {"usage": {"include": True}, **({"models": [name] + backups} if backups else {})}
@@ -115,18 +118,18 @@ ERRORS = [  # (text found in the error, what happened, what to do)
     ("own-key", "Bring your own API key", "This app answers with your key only: open Model in the sidebar, pick a "
                                           "provider and paste its key. It stays in this browser session. Explore, "
                                           "Memory and Data work without one."),
-    ("402", "The key is out of credit", "The demo key's credit is used up (or your key has none). Paste your own "
+    ("code: 402", "The key is out of credit", "The demo key's credit is used up (or your key has none). Paste your own "
                                         "key under Model in the sidebar."),
     ("limit exceeded", "The key's spending limit is reached", "Paste your own key under Model in the sidebar."),
     ("overloaded", "The model is overloaded", "The provider is busy right now (Anthropic returns 529). Retry in a "
                                               "minute or pick another model."),
     ("credit balance", "The account has no credit", "Add credit to the provider account, or use another key."),
-    ("429", "The model is rate-limited", "Free OpenRouter models share a busy pool. Retry in a minute, or use a "
+    ("code: 429", "The model is rate-limited", "Free OpenRouter models share a busy pool. Retry in a minute, or use a "
                                          "paid model such as `openai/gpt-oss-120b` (well under a cent per question)."),
-    ("401", "The API key was rejected", "Paste a valid key in the sidebar under Model, or set it in `.env`."),
+    ("code: 401", "The API key was rejected", "Paste a valid key in the sidebar under Model, or set it in `.env`."),
     ("api_key", "No API key", "Paste a key in the sidebar under Model, or set it in `.env`."),
-    ("403", "This model refuses requests from this app", "Pick another model id in the sidebar."),
-    ("404", "Model not found", "Check the model id in the sidebar, e.g. `openai/gpt-oss-120b`."),
+    ("code: 403", "This model refuses requests from this app", "Pick another model id in the sidebar."),
+    ("code: 404", "Model not found", "Check the model id in the sidebar, e.g. `openai/gpt-oss-120b`."),
     ("Connection", "Cannot reach a service", "Check that FalkorDB is running and the model provider is reachable."),
     ("Recursion", "The agent took too many steps", "Ask a narrower question."),
 ]

@@ -30,8 +30,10 @@ COMPONENT_DIRS = {
     "kube-proxy": ["pkg/proxy", "cmd/kube-proxy"],
 }
 
+COMPONENT_NAMES = {"scheduler": "kube-scheduler", "controller-manager": "kube-controller-manager",
+                   "apiserver": "kube-apiserver", "proxy": "kube-proxy"}  # short names some KEPs use
 GATE_RE = re.compile(r"\b(?:kube)?features\.([A-Z][A-Za-z0-9]+)\b")
-IMPORT_RE = re.compile(r'"k8s\.io/kubernetes/([^"]+)"')
+IMPORT_RE = re.compile(r'"k8s\.io/([\w.-]+)/([^"]+)"')  # this repo's packages, and its staging modules
 PR_MERGE_RE = re.compile(r"^Merge pull request #(\d+) from ([\w-]+)/")
 PR_SQUASH_RE = re.compile(r"\(#(\d+)\)$")
 
@@ -39,7 +41,8 @@ PR_SQUASH_RE = re.compile(r"\(#(\d+)\)$")
 # ---------- small pure helpers ----------
 
 def handle(s):
-    return str(s).strip().lstrip("@").split()[0].lower() if s else None
+    h = str(s).strip().strip("\"'“”‘’").lstrip("@").split() if s else []
+    return h[0].strip("\"'“”‘’,").lower() if h else None
 
 
 PLACEHOLDERS = {"tbd", "tba", "todo", "none", "n/a", "na", "unknown"}
@@ -110,7 +113,7 @@ def parse_owners(aliases):
     for f in K8S.rglob("OWNERS"):
         d = dir_of(f.relative_to(K8S).as_posix())
         y = read_yaml(f)
-        filt = (y.get("filters") or {}).values()
+        filt = [(y.get("filters") or {}).get(".*") or {}]  # other filters cover only some files, e.g. go.mod
         for role in ("approvers", "reviewers"):
             names = as_list(y.get(role)) + [n for fv in filt for n in as_list((fv or {}).get(role))]
             for n in names:
@@ -121,7 +124,8 @@ def parse_owners(aliases):
                     continue  # e.g. a GitHub team name used where a handle belongs
                 owners.append({"dir": d, "role": role[:-1].upper(), "name": n if kind == "Team" else handle(n), "kind": kind})
         flags.append({"dir": d, "stop": bool((y.get("options") or {}).get("no_parent_owners"))})
-        labels += [{"dir": d, "sig": "sig-" + l.split("/", 1)[1]} for l in as_list(y.get("labels")) if str(l).startswith("sig/")]
+        labels += [{"dir": d, "sig": "sig-" + l.split("/", 1)[1]} for l in as_list(y.get("labels")) + as_list(filt[0].get("labels"))
+                   if str(l).startswith("sig/")]
     return owners, flags, labels
 
 
@@ -129,13 +133,16 @@ def parse_owners(aliases):
 
 def parse_code():
     imports, gates = set(), set()
+    staging = {p.name for p in (K8S / "staging" / "src" / "k8s.io").iterdir()} if (K8S / "staging").exists() else set()
     for f in K8S.rglob("*.go"):
         if f.name.endswith("_test.go"):
             continue
         d = dir_of(f.relative_to(K8S).as_posix())
         text = f.read_text(encoding="utf-8", errors="ignore")
         head = text.split("\nfunc ", 1)[0]
-        imports |= {(d, imp) for imp in IMPORT_RE.findall(head) if imp != d}
+        found = [rest if repo == "kubernetes" else f"staging/src/k8s.io/{repo}/{rest}"
+                 for repo, rest in IMPORT_RE.findall(head) if repo == "kubernetes" or repo in staging]
+        imports |= {(d, imp) for imp in found if imp != d}
         gates |= {(d, g) for g in GATE_RE.findall(text)}
     return [{"src": a, "dst": b} for a, b in imports], [{"dir": a, "gate": g} for a, g in gates]
 
@@ -145,17 +152,18 @@ def parse_code():
 def parse_prs():
     out = subprocess.run(
         ["git", "-C", str(K8S), "log", "--first-parent", "--diff-merges=first-parent",
-         "--name-only", "--format=@@%cI|%s%n%b%n@@files"],
+         "--name-only", "--format=@@%cI|%P|%s%n%b%n@@files"],
         capture_output=True, text=True, encoding="utf-8", errors="ignore", check=True,
     ).stdout
     prs = []
     for block in out.split("@@")[1:]:
         if block.startswith("files"):
-            if prs:
+            if prs and prs[-1]["dirs"] is not None:
                 prs[-1]["dirs"] = sorted({dir_of(l) for l in block.splitlines()[1:] if l.strip()})
             continue
         first, _, body = block.partition("\n")
-        date, _, subject = first.partition("|")
+        date, _, rest = first.partition("|")
+        parents, _, subject = rest.partition("|")
         if m := PR_MERGE_RE.match(subject):
             num, author = int(m[1]), m[2].lower()
             title = body.strip().splitlines()[0] if body.strip() else subject
@@ -163,8 +171,9 @@ def parse_prs():
             num, author, title = int(m[1]), None, subject
         else:
             continue
-        prs.append({"number": num, "author": author, "title": title[:200], "merged_at": date, "dirs": []})
-    return prs
+        # no parent: the clone's first commit, whose "change" is the whole tree, so its folders are unknown
+        prs.append({"number": num, "author": author, "title": title[:200], "merged_at": date, "dirs": [] if parents.strip() else None})
+    return [{**pr, "dirs": pr["dirs"] or []} for pr in prs]
 
 
 # ---------- parse: SIGs (the org chart) ----------
@@ -303,11 +312,16 @@ def kep_summary(folder, limit=900):
 
 def parse_keps():
     keps, people, links, gates = [], [], [], []
-    for f in KEPS.glob("*/*/kep.yaml"):
+    files = {}
+    for f in sorted(KEPS.rglob("kep.yaml")):  # some KEPs sit one folder deeper (sig-cluster-lifecycle/kubeadm/...)
         y = read_yaml(f)
         num = str(y.get("kep-number") or kep_id(f.parent.as_posix()) or "")
-        if not num:
-            continue
+        if not num.isdigit() or not int(num):
+            continue  # the template (NNNN) and placeholder 0000 numbers
+        if num in files and str(y.get("status")) == "replaced":
+            continue  # two files with one number: keep the one that is not replaced
+        files[num] = (f, y)
+    for num, (f, y) in files.items():
         keps.append({
             "number": num, "title": y.get("title"), "status": y.get("status"), "stage": y.get("stage"),
             "milestone": str(y.get("latest-milestone") or ""), "created": str(y.get("creation-date") or ""),
@@ -321,7 +335,8 @@ def parse_keps():
             links += [{"src": num, "dst": kep_id(t), "rel": rel} for t in as_list(y.get(key)) if kep_id(t)]
         for g in as_list(y.get("feature-gates")):
             if isinstance(g, dict) and g.get("name"):
-                gates.append({"kep": num, "gate": g["name"], "components": [c for c in as_list(g.get("components")) if c]})
+                comps = {COMPONENT_NAMES.get(c.strip(), c.strip()) for x in as_list(g.get("components")) if x for c in str(x).split(",")}
+                gates.append({"kep": num, "gate": g["name"], "components": sorted(c for c in comps if c)})
     return keps, people, links, gates
 
 

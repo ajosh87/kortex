@@ -16,6 +16,7 @@ from datetime import datetime
 
 import streamlit as st
 
+import answer as ANS
 import tools as T
 import ui_graph
 
@@ -344,12 +345,19 @@ def graph_view(graph, key=None, caption=None, rankdir="LR", layout="dot", edge_l
 
 @st.cache_data(ttl=600, max_entries=500, show_spinner="Reading this node's details from the graph…")
 def _card(kind, key, user):
-    return T.node_card(kind, key, user)
+    card = T.node_card(kind, key, user)
+    if card["error"]:
+        raise RuntimeError(card["error"])  # st.cache_data keeps results, not exceptions: the next try reads again
+    return card
 
 
 def node_panel(n, key):
     """The clicked node's profile, from the pipeline, shown in the app."""
-    card = _card(n["kind"], n["key"], st.session_state.get("user"))
+    try:
+        card = _card(n["kind"], n["key"], st.session_state.get("user"))
+    except RuntimeError as e:
+        st.error(f"Could not read {n['label']}'s details: {e}", icon=":material/error:")
+        return
     with st.container(horizontal=True, vertical_alignment="center", gap="small"):
         st.badge(n["kind_label"], color="primary")
         st.markdown(f"**{n['label']}**" + (f" · {n['title']}" if n.get("title") else ""))
@@ -429,10 +437,11 @@ def turn_footer(d, turn, open_graph, on_follow_up=None):
     """After an answer: the graph (a framed tile on the current turn, a collapsed expander on older ones),
     a row of numbers, and on the latest turn a row of follow-up questions. No tiles inside tiles."""
     g = d["graph"]
+    gk = f"graph-{st.session_state.get('session', '')}-{turn}"  # per chat: a node clicked in one chat stays there
     if g["edges"] and open_graph:
-        with tile(f"graph-{turn}"):
+        with tile(gk):
             st.markdown(f"**:material/hub: {graph_title(g)}**")
-            graph_view(g, key=f"graph-{turn}")
+            graph_view(g, key=gk)
     elif g["edges"]:
         with st.expander(graph_title(g), icon=":material/hub:", key=f"exp-graph-{turn}"):
             graph_view(g)
@@ -451,6 +460,10 @@ def recalled_turn(ev):
     st.markdown(ev["text"])
     st.caption(f":material/memory: From memory · asked {ev['when']} · linked to {ev['linked']} graph "
                f"node{'s' if ev['linked'] != 1 else ''}. Its steps were not stored; ask again to see them.")
+    if ev.get("unverified"):
+        st.badge(f"Not from the graph: {', '.join(ev['unverified'][:4])}" + (" …" if len(ev["unverified"]) > 4 else ""),
+                 icon=":material/report:", color="red",
+                 help="The answer named these, but no tool returned them that turn. Treat them as unverified.")
 
 
 def render_turn(events, turn, live=False, latest=False, on_follow_up=None):
@@ -482,7 +495,7 @@ def render_turn(events, turn, live=False, latest=False, on_follow_up=None):
         elif kind == "token" and live:
             text += ev["text"]
             if time.monotonic() - drawn > REDRAW:  # redrawing every token re-sends and re-parses the whole answer
-                answer.markdown(text)
+                answer.markdown(ANS.no_images(text))  # never fetch an image URL, not even mid-stream
                 drawn = time.monotonic()
         elif kind == "text_reset" and live:
             text = ""
@@ -564,14 +577,15 @@ def query_line(qy):
     st.session_state["_console_lines"] += 1
 
 
-def work(label, queries, result=None, ms=None, tag="tool"):
+def work(label, queries, result=None, ms=None, tag="tool", failed=False):
     """A piece of work that is not an agent turn (an Explore view, a node's details, a page load): what it was,
     the Cypher it ran, and what came out."""
     line(queries[0]["at"] if queries else None, tag, label)
     for qy in queries:
         query_line(qy)
     if result is not None:
-        line(queries[-1]["at"] if queries else None, tag, f"✓ {result}" + (f" · {ms} ms" if ms is not None else ""))
+        line(queries[-1]["at"] if queries else None, "error" if failed else tag,
+             f"{'✗' if failed else '✓'} {result}" + (f" · {ms} ms" if ms is not None else ""))
 
 
 def call(tool, args):
@@ -599,6 +613,8 @@ def log_event(ev):
     elif kind == "step_end":
         mark = "✗" if ev["status"] == "error" else "✓"
         line(at, "tool", f"{mark} `{ev['tool']}` → {ev['result']} · {ev['ms']} ms")
+    elif kind == "memory" and ev.get("error"):
+        line(at, "error", ev["error"])
     elif kind == "memory":
         line(at, "memory", f"saved this turn in your memory graph, pointing at {ev['linked']} "
                            f"Kubernetes node{'s' if ev['linked'] != 1 else ''}")

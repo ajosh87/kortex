@@ -10,6 +10,7 @@ import gzip
 import json
 import re
 import threading
+import uuid
 from collections import defaultdict
 from pathlib import Path
 
@@ -67,6 +68,7 @@ def export():
                                     "WHERE entitytype = 'NODE' RETURN label, properties, types")]
     _write(KUBERNETES, {"nodes": nodes, "edges": edges, "indexes": indexes})
     turns = sorted(({"session": s["session"], "question": t["question"], "answer": t["answer"], "at": t["at"],
+                     "unverified": t.get("unverified") or [],
                      "refs": [{"kind": r["kind"], "key": r["key"], "title": r.get("title")} for r in t["refs"]]}
                     for s in MG.sessions(DEMO_USER, limit=10000) for t in MG.session_turns(DEMO_USER, s["session"])),
                    key=lambda t: t["at"])
@@ -74,13 +76,11 @@ def export():
     return {"nodes": len(nodes), "relationships": len(edges), "indexes": len(indexes), "demo turns": len(turns)}
 
 
-def restore(graph=GRAPH):
+def restore(graph=GRAPH, replace=True):
     """Rebuild the Kubernetes graph from the snapshot. It is built under a temporary name and copied into place
     at the end, so nobody ever reads a half-built graph."""
     data = _read(KUBERNETES)
-    temp = f"{graph}_restoring"
-    if exists(temp):
-        client().select_graph(temp).delete()
+    temp = f"{graph}_restoring_{uuid.uuid4().hex[:8]}"  # its own name: two restores (app, keep-alive job) never mix
     label = {n["id"]: n["label"] for n in data["nodes"]}
     by_label = defaultdict(list)
     for n in data["nodes"]:
@@ -112,6 +112,9 @@ def restore(graph=GRAPH):
                 _run(temp, cypher)
             except ResponseError:
                 pass  # already there
+    if exists(graph) and has_data(graph) and not replace:
+        client().select_graph(temp).delete()  # another restore finished first: keep it
+        return {"nodes": len(data["nodes"]), "relationships": len(data["edges"]), "skipped": "already restored"}
     if exists(graph):
         client().select_graph(graph).delete()
     client().connection.execute_command("GRAPH.COPY", temp, graph)
@@ -124,16 +127,26 @@ def restore_demo():
     turns = _read(DEMO)
     for t in turns:
         MG.remember(DEMO_USER, t["session"], t["question"], t["answer"],
-                    [node(r["kind"], r["key"], title=r.get("title")) for r in t["refs"]], at=t["at"])
+                    [node(r["kind"], r["key"], title=r.get("title")) for r in t["refs"]], at=t["at"],
+                    unverified=t.get("unverified") or [])
     return len(turns)
 
 
+def has_data(graph=GRAPH):
+    """Whether the graph holds a finished load (its Meta node is written last). Read-only: a plain GRAPH.QUERY on a
+    graph that is not there would create it empty."""
+    try:
+        return bool(client().select_graph(graph).ro_query("MATCH (m:Meta {id: 'load'}) RETURN 1 LIMIT 1").result_set)
+    except ResponseError:
+        return False  # no such graph
+
+
 def missing():
-    """What the snapshot could restore because the database lacks it: the Kubernetes graph (no graph at all, as on a
-    fresh install or a free cloud instance that restarted; an empty one is left alone, since ingest.py empties it
-    while reloading) and the demo user's chats (none at all)."""
+    """What the snapshot could restore because the database lacks it: the Kubernetes graph (none, or one without a
+    finished load: a free cloud instance that restarted, or a read that created it empty) and the demo user's
+    chats (none at all). Run ingest.py with the app stopped: while it reloads, the graph has no Meta node."""
     gone = []
-    if KUBERNETES.exists() and not exists(GRAPH):
+    if KUBERNETES.exists() and not has_data(GRAPH):
         gone.append("the Kubernetes graph")
     if DEMO.exists() and not MG.sessions(DEMO_USER, limit=1):
         gone.append("the demo chats")
@@ -148,7 +161,7 @@ def ensure():
     with _lock:
         gone, done = missing(), {}
         if "the Kubernetes graph" in gone:
-            done["kubernetes"] = restore()
+            done["kubernetes"] = restore(replace=False)
         if "the demo chats" in gone:
             done["demo turns"] = restore_demo()
         return done
