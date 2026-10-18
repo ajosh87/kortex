@@ -5,6 +5,9 @@
 Built for [Graph Hacks](https://www.wemakedevs.org/hackathons/falkordb) by WeMakeDevs · powered by
 [FalkorDB](https://www.falkordb.com) · made with [Streamlit](https://streamlit.io).
 
+**Live app: https://kortex-falkordb.streamlit.app** (bring your own OpenRouter, Groq or OpenAI key for the chat;
+Explore, Memory and Data work without one).
+
 Kubernetes has thousands of contributors, 24 departments (SIGs), formal design decisions (KEPs),
 code ownership rules (OWNERS files) and a steady stream of merged work. Knowing *who must approve a change,
 which decisions constrain it, what else could break, and who actually knows the code* means piecing
@@ -261,7 +264,8 @@ uv run streamlit run app.py
 ```
 
 That is all: on its first start the app finds no graph and loads the bundled snapshot (`snapshot/`, the
-Kubernetes graph plus the demo user's chats) in about half a minute.
+Kubernetes graph plus the demo user's chats) in about half a minute. The snapshot is only ever loaded *into*
+FalkorDB: every answer, walk and algorithm runs as Cypher on FalkorDB, and the app does not start without it.
 
 ### Rebuilding the graph from the source repositories
 
@@ -349,7 +353,9 @@ live only as long as the instance does.
 
 ## Data and privacy
 
-All data is public, from the Kubernetes GitHub repositories. People are stored **only as GitHub handles**:
+All data is public, from the Kubernetes GitHub repositories
+([kubernetes](https://github.com/kubernetes/kubernetes), [enhancements](https://github.com/kubernetes/enhancements),
+[community](https://github.com/kubernetes/community), all Apache-2.0). People are stored **only as GitHub handles**:
 names, emails and employers in `sigs.yaml` are dropped, and PR authors come from the merge bot's commit
 message rather than commit emails.
 
