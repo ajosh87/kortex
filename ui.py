@@ -288,6 +288,23 @@ def terminal_css():
 {tags}
 .st-key-console-log summary [data-testid="stIconMaterial"] {{ color: #8B949E !important; }}
 .st-key-console-log [data-testid="stCode"] pre {{ background: #161B22 !important; border: 1px solid #30363D !important; }}
+.st-key-console-head {{ position: relative; background: #161B22; margin: -1rem -1rem 0 -1rem; padding: 0.55rem 0.8rem 0.5rem 4.4rem !important;
+  border-bottom: 1px solid #30363D !important; }}
+.st-key-console-head::before {{ content: ""; position: absolute; left: 1rem; top: 0.95rem; width: 11px; height: 11px; border-radius: 50%;
+  background: #FF5F57; box-shadow: 17px 0 0 #FEBC2E, 34px 0 0 #28C840; }}
+.st-key-console-head p {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; font-size: 0.78rem !important;
+  font-weight: 500 !important; color: #C9D1D9 !important; letter-spacing: 0 !important; }}
+.st-key-console-head [data-testid="stCaptionContainer"] p {{ font-size: 0.68rem !important; color: #6E7681 !important; }}
+.st-key-console-empty p {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; font-size: 0.76rem !important; color: #7EE787 !important; }}
+div[class*="st-key-log-"] p {{ padding-left: 1.6em; text-indent: -1.6em; }}  /* wrapped lines sit under the text, not the time */
+div[class*="st-key-log-"] p > * {{ text-indent: 0; }}  /* the indent is inherited: the time and tag keep their place */
+.st-key-console-log::after {{ content: "▋"; display: block; color: #7EE787; font-family: "JetBrains Mono", monospace; font-size: 0.8rem;
+  padding-top: 0.2rem; animation: kx-blink 1.1s steps(1) infinite; }}
+@keyframes kx-blink {{ 50% {{ opacity: 0; }} }}
+.st-key-console-log {{ scrollbar-width: thin; }}
+.st-key-console-log::-webkit-scrollbar {{ width: 8px; }}
+.st-key-console-log::-webkit-scrollbar-thumb {{ background: #30363D; border-radius: 4px; }}
+.st-key-console-log [data-testid="stExpander"] summary {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; }}
 .st-key-console-log [data-testid="stCode"] code, .st-key-console-log [data-testid="stCode"] code span {{ color: #C9D1D9 !important; }}
 .st-key-console-log .token.keyword {{ color: #FF7B72 !important; }}
 .st-key-console-log .token.function {{ color: #D2A8FF !important; }}
@@ -555,8 +572,8 @@ def console():
         with st.container(key=f"console-{mode}", gap="small"):
             with st.container(key="console-head", horizontal=True, vertical_alignment="top", gap="small"):
                 with st.container(gap=None):
-                    st.markdown("**:material/terminal: Console**")
-                    st.caption("Model calls, tool calls and every Cypher query, as they run.")
+                    st.markdown("kortex@falkordb: ~/console")
+                    st.caption("model calls · tool calls · every Cypher query, as they run")
                 st.button("", icon=":material/close:", key="console-close", type="tertiary", help="Minimize the console",
                           on_click=_show_console, args=(False,))
             st.session_state["_console"] = st.container(height=400, autoscroll=True, key="console-log", gap=None, border=False)
@@ -666,4 +683,4 @@ def console_end():
     """Called once at the end of every run: says so when nothing ran in the background."""
     if not st.session_state["_console_lines"]:
         with console(), st.container(key="console-empty"):
-            st.caption("Nothing has run yet. Ask something, or open Explore.")
+            st.caption("$ waiting… ask something, or open Explore")
