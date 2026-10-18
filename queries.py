@@ -493,20 +493,50 @@ def stats():
 def sig_map(min_keps=4):
     """The whole graph as clusters, one per SIG (department): how much each owns (folders labelled for it, KEPs it
     owns, people who lead it), and how SIGs work together: KEPs one SIG owns and another takes part in (pairs with
-    at least `min_keps`). Returns a graph for the UI and the rows behind it."""
+    at least `min_keps`, plus each SIG's strongest link when it has none that strong). Returns a graph for the UI
+    and the rows behind it."""
     sigs = q("""
         MATCH (s:SIG)
         OPTIONAL MATCH (d:Dir)-[:LABELED]->(s) WITH s, count(DISTINCT d) AS folders
         OPTIONAL MATCH (k:KEP)-[:OWNED_BY]->(s) WITH s, folders, count(DISTINCT k) AS keps
         OPTIONAL MATCH (p:Person)-[:CHAIRS|TECH_LEADS]->(s)
         RETURN s.name AS sig, folders, keps, count(DISTINCT p) AS leads ORDER BY keps DESC""")
-    links = q("""
+    pairs = q("""
         MATCH (a:SIG)<-[:OWNED_BY]-(k:KEP)-[:INVOLVES]->(b:SIG) WHERE a <> b
-        WITH a, b, count(DISTINCT k) AS n WHERE n >= $min
-        RETURN a.name AS owner, b.name AS partner, n ORDER BY n DESC""", {"min": min_keps})
+        RETURN a.name AS owner, b.name AS partner, count(DISTINCT k) AS n ORDER BY n DESC""")
+    links = [{**r, "via": "KEPs"} for r in pairs if r["n"] >= min_keps]
+    # no SIG floats alone: one below the threshold is linked to its strongest partner, and one that shares no KEPs
+    # to the SIGs its leads also lead
+    linked = {x for r in links for x in (r["owner"], r["partner"])}
+    for r in pairs:
+        if r["owner"] not in linked or r["partner"] not in linked:
+            links.append({**r, "via": "KEPs"})
+            linked |= {r["owner"], r["partner"]}
+    for alone in [r["sig"] for r in sigs if r["sig"] not in linked]:
+        links += [{**r, "via": "shared leads"} for r in q("""
+            MATCH (a:SIG {name: $s})<-[:CHAIRS|TECH_LEADS]-(p:Person)-[:CHAIRS|TECH_LEADS]->(b:SIG) WHERE a <> b
+            RETURN a.name AS owner, b.name AS partner, count(DISTINCT p) AS n ORDER BY n DESC LIMIT 1""", {"s": alone})]
     nodes = [node("SIG", r["sig"], title=f"{r['keps']} KEPs · {r['folders']} folders") for r in sigs]
-    edges = [{"src": f"SIG:{r['owner']}", "rel": f"{r['n']} KEPs", "dst": f"SIG:{r['partner']}"} for r in links]
+    edges = [{"src": f"SIG:{r['owner']}", "rel": f"{r['n']} {r['via'] if r['via'] != 'KEPs' or r['n'] != 1 else 'KEP'}",
+              "dst": f"SIG:{r['partner']}"} for r in links]
     return {"nodes": nodes, "edges": edges, "total_nodes": len(nodes), "shown_nodes": len(nodes)}, sigs, links
+
+
+def neighbors(kind, key, per=6):
+    """One node's direct neighbours for browsing the graph: up to `per` for each relationship type and direction
+    (newest first where nodes have dates), with how many there are in all. Rows: rel, out (the relationship
+    starts at this node), total, and the neighbour's kind, key and title."""
+    if kind not in KIND_LABEL:
+        return []
+    seed = NODE_KEY.replace("n:", "s:").replace("n.", "s.")
+    return q(f"""
+        MATCH (s:{kind}) WHERE toString({seed}) = $key
+        MATCH (s)-[r]-(n) WHERE NOT n:Meta
+        WITH type(r) AS rel, id(startNode(r)) = id(s) AS out, n ORDER BY coalesce(n.updated, n.merged_at, '') DESC
+        WITH rel, out, collect(n) AS ns
+        UNWIND ns[0..$per] AS n
+        RETURN rel, out, size(ns) AS total, labels(n)[0] AS kind, toString({NODE_KEY}) AS key, n.title AS title""",
+             {"key": str(key), "per": per})
 
 
 def sig_inside(sig, per=6):

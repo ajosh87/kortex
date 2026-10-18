@@ -88,8 +88,8 @@ ORDER BY levels_up
 - **Names the graph did not return are flagged.** People, KEPs and PRs in an answer link to GitHub only if a tool
   returned them this turn; anything else is marked "Not from the graph", and stored that way in memory.
 - **No model needed to check it.** The Explore page runs the same tools directly on any folder, KEP, person, SIG
-  or document. The Data page shows the schema as found in the data and the whole graph grouped by SIG; click a
-  SIG to open its cluster (leads, subprojects, KEPs, folders, annual reports).
+  or document. The Data page shows the schema as found in the data and the whole graph grouped by SIG: click any
+  node to open its neighbours and keep going, with Back and Start over.
 - **Memory is a graph walk too.** Recall goes from a topic to its nodes and neighbours in the Kubernetes graph,
   then to the user's earlier turns that point at them, and says why each one was recalled.
 
