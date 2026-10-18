@@ -107,7 +107,9 @@ def search(page, text, view):
     box.fill("")
     box.type(text, delay=60)
     pause(2.5)
-    click(page, page.get_by_text(view, exact=True).first)
+    button = page.locator("[data-testid='stButtonGroup'] button", has_text=view).first
+    button.wait_for(timeout=60_000)  # the walks offered for the first match
+    click(page, button)
     page.wait_for_selector("text=The walk:", timeout=60_000)
     pause(2.0)
 
@@ -130,7 +132,7 @@ def ask_trace(page):
 
 
 def first_query_ready(page):
-    page.wait_for_selector('[class*="st-key-log-cypher-"] summary', timeout=150_000)
+    page.wait_for_selector('[class*="st-key-log-cypher-"] summary', timeout=480_000)
 
 
 def open_query(page):
@@ -139,7 +141,7 @@ def open_query(page):
 
 
 def answer_ready(page):
-    page.wait_for_selector("text=Worked for", timeout=360_000)
+    page.wait_for_selector("text=Worked for", timeout=600_000)
     pause(1.0)
 
 

@@ -70,7 +70,9 @@ with st.sidebar:
     st.text_input("Your name", value="demo", key="user", help="Chats and memory are kept per name, across sessions.")
     default_provider, default_model = M.split_spec(M.MODEL)
     providers = M.providers()
-    with st.expander("Model", icon=":material/tune:", expanded=M.needs_key(st.session_state.get("api_key"))):
+    demo_left = M.demo_left(st.session_state.get("demo_used", 0))
+    with st.expander("Model", icon=":material/tune:",
+                     expanded=M.needs_key(st.session_state.get("api_key"), st.session_state.get("demo_used", 0))):
         provider = st.selectbox("Provider", providers, key="provider",
                                 index=providers.index(default_provider) if default_provider in providers else 0)
         model = st.text_input("Model id", value=default_model if provider == default_provider else M.PROVIDERS[provider])
@@ -78,10 +80,13 @@ with st.sidebar:
             st.session_state.api_key = ""
             st.caption("Bedrock uses your AWS credentials (env vars or ~/.aws).")
         else:
-            st.text_input("API key (required)" if M.REQUIRE_USER_KEY else "API key (optional)", type="password", key="api_key",
-                          help="Used only in this browser session, never stored." + (
+            st.text_input("API key (required)" if M.REQUIRE_USER_KEY and not demo_left else "API key (optional)",
+                          type="password", key="api_key", help="Used only in this browser session, never stored." + (
                               "" if M.REQUIRE_USER_KEY else f" Leave empty to use {M.KEY_ENV[provider]} from the server."))
-            if M.REQUIRE_USER_KEY:
+            if M.REQUIRE_USER_KEY and demo_left:
+                st.caption(f"Without a key: {demo_left} demo question{'s' if demo_left != 1 else ''} left on the app's key, "
+                           f"answered by `{M.split_spec(M.MODEL)[1]}`. With your own key, any model above.")
+            elif M.REQUIRE_USER_KEY:
                 st.caption("This app answers with your own key only.")
     st.session_state.spec = f"{provider}:{model.strip()}"
 

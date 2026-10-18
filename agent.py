@@ -83,8 +83,8 @@ def memory_tool(user):
     return recall_memory
 
 
-def build(user, spec=M.MODEL, api_key=None):
-    return create_agent(M.make_model(spec, api_key), all_tools() + [memory_tool(user)],
+def build(user, spec=M.MODEL, api_key=None, demo=False):
+    return create_agent(M.make_model(spec, api_key, demo), all_tools() + [memory_tool(user)],
                         system_prompt=PROMPT.format(scope=Q.data_scope()), checkpointer=InMemorySaver())
 
 

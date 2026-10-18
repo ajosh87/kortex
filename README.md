@@ -5,8 +5,8 @@
 Built for [Graph Hacks](https://www.wemakedevs.org/hackathons/falkordb) by WeMakeDevs · powered by
 [FalkorDB](https://www.falkordb.com) · made with [Streamlit](https://streamlit.io).
 
-**Live app: https://kortex-falkordb.streamlit.app** (bring your own OpenRouter, Anthropic, Groq or OpenAI key for the chat;
-Explore, Memory and Data work without one).
+**Live app: https://kortex-falkordb.streamlit.app** (5 demo questions per session on the app's key, then bring your
+own OpenRouter, Anthropic, Groq or OpenAI key; Explore, Memory and Data work without one).
 
 Kubernetes has thousands of contributors, 24 departments (SIGs), formal design decisions (KEPs),
 code ownership rules (OWNERS files) and a steady stream of merged work. Knowing *who must approve a change,
@@ -305,7 +305,8 @@ Explore the raw graph in the FalkorDB Browser at http://localhost:3000.
 ### Choosing the LLM
 
 The model is a `provider:model` string, set with `MODEL` in `.env` or in the app sidebar.
-Judges can paste their own key in the sidebar; it stays in that browser session only.
+Judges can paste their own key in the sidebar; it stays in that browser session only. Without one, the live app
+answers 5 questions per session on its own capped key, with the default model.
 
 | Provider | Example `MODEL` | Key |
 |---|---|---|
@@ -341,7 +342,9 @@ narration and the clicks live together in `SCENES` in `demo/record_demo.py`.
    file and Python 3.12. Add these secrets:
    ```toml
    MODEL = "openrouter:openai/gpt-oss-120b"
-   REQUIRE_USER_KEY = "true"      # visitors answer with their own API key; the deployment never spends yours
+   REQUIRE_USER_KEY = "true"      # visitors answer with their own API key...
+   DEMO_QUESTIONS = "5"           # ...after a few questions per session on this deployment's key (0 = none)
+   OPENROUTER_API_KEY = "..."     # the demo key: give it a credit limit at openrouter.ai, which is the hard cap
    FALKORDB_HOST = "..."
    FALKORDB_PORT = "..."
    FALKORDB_USERNAME = "falkordb"
@@ -367,8 +370,10 @@ live only as long as the instance does.
 - **Answers** never embed images (an image URL is fetched on render, so text planted in the data could use one
   to leak what is on screen), and names in an answer that no tool returned are flagged as "Not from the graph".
 - **API keys** pasted in the sidebar stay in that browser session; `.env` and `.streamlit/secrets.toml` are git-ignored.
-  With `REQUIRE_USER_KEY=true` the server's keys are never used for chats, and Bedrock (server AWS credentials)
-  is not offered; Explore, Memory and Data work without a key.
+  With `REQUIRE_USER_KEY=true` the server's key answers only `DEMO_QUESTIONS` questions per browser session, always
+  with the default `MODEL` (a visitor can not point it at another model); after that a visitor's own key is needed.
+  The real limit is the credit limit set on that key at the provider, since a new session starts a new count.
+  Bedrock (server AWS credentials) is not offered. Explore, Memory and Data work without a key.
 - **FalkorDB** has no password locally, so the Docker command binds it to `127.0.0.1` only, with append-only
   persistence on.
 - **Memory** is separated by the name typed in the sidebar, with no login (see "How memory works").

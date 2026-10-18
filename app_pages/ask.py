@@ -30,12 +30,12 @@ STARTERS = [
 ]
 
 
-def get_agent():
+def get_agent(spec, demo):
     """One agent per browser session; rebuilt when name, model or key changes. Keys stay in this session only."""
-    user, spec, key = st.session_state.user, st.session_state.spec, st.session_state.get("api_key", "")
-    sig = (user, spec, hash(key))
+    user, key = st.session_state.user, st.session_state.get("api_key", "")
+    sig = (user, spec, hash(key), demo)
     if st.session_state.get("agent_sig") != sig:
-        st.session_state.agent = A.build(user, spec, key or None)
+        st.session_state.agent = A.build(user, spec, key or None, demo)
         st.session_state.agent_sig = sig
     return st.session_state.agent
 
@@ -66,12 +66,20 @@ def starter(i, locked):
 
 
 messages = st.session_state.chats.setdefault(st.session_state.session, [])
-locked = M.needs_key(st.session_state.get("api_key"))  # this deployment needs the visitor's own key
+used = st.session_state.get("demo_used", 0)  # questions asked on the app's demo key in this browser session
+locked = M.needs_key(st.session_state.get("api_key"), used)  # this deployment needs the visitor's own key
+demo = M.REQUIRE_USER_KEY and not (st.session_state.get("api_key") or "").strip() and not locked
+spec = M.MODEL if demo else st.session_state.spec  # the demo key only runs the default model
 pending = None if locked else st.session_state.pop("pending", None)  # a starter or follow-up button was clicked
 if locked:
     with st.bottom:
-        st.caption(":material/key: Add your API key under **Model** in the sidebar to ask. "
-                   "Explore, Memory and Data work without one.")
+        st.caption(":material/key: Add your API key under **Model** in the sidebar to ask"
+                   + (f" (the {M.DEMO_QUESTIONS} demo questions of this session are used up)" if used else "")
+                   + ". Explore, Memory and Data work without one.")
+elif demo:
+    with st.bottom:
+        st.caption(f":material/key: Demo key: {M.demo_left(used)} of {M.DEMO_QUESTIONS} questions left in this session, "
+                   f"answered by `{M.split_spec(M.MODEL)[1]}`. Add your own key under **Model** for more.")
 with st.bottom, st.container(horizontal=True, vertical_alignment="bottom", gap="small"):
     prompt = st.chat_input("Add your API key in the sidebar to ask" if locked else
                            "Ask about owners, design decisions, impact or people", submit_mode="disable",
@@ -111,12 +119,14 @@ for i, msg in enumerate(messages):
         ui.render_turn(msg["events"], turn=i, latest=latest, on_follow_up=queue if latest else None)
 
 if prompt:
+    if demo:
+        st.session_state.demo_used = used + 1
     messages.append({"role": "user", "content": prompt})
     user_message(prompt)
     with st.chat_message("assistant"):
         try:
-            stream = A.ask_stream(get_agent(), st.session_state.user, st.session_state.session, prompt,
-                                  requested=st.session_state.spec)
+            stream = A.ask_stream(get_agent(spec, demo), st.session_state.user, st.session_state.session, prompt,
+                                  requested=spec)
         except Exception as e:  # building the model failed (bad provider, missing credentials)
             stream = iter([M.explain_error(e)])
         events = ui.render_turn(ui.logged(stream), turn=len(messages), live=True, on_follow_up=queue)

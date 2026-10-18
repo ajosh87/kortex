@@ -21,6 +21,10 @@ KEY_ENV = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
 # Public deployments: visitors bring their own API key. The server's keys (and its AWS credentials) are never used.
 REQUIRE_USER_KEY = os.getenv("REQUIRE_USER_KEY", "").strip().lower() in ("1", "true", "yes")
 
+# ...except for a few demo questions per browser session on the server's key, with the default MODEL only, so
+# visitors can try the chat first. Set the hard cap as a credit limit on that key at the provider.
+DEMO_QUESTIONS = int(os.getenv("DEMO_QUESTIONS", "5") or 0)
+
 # provider -> suggested model id (any tool-calling model works)
 PROVIDERS = {"openrouter": "openai/gpt-oss-120b", "anthropic": "claude-sonnet-5-5", "groq": "openai/gpt-oss-120b",
              "openai": "gpt-5-mini", "bedrock_converse": "us.amazon.nova-pro-v1:0"}
@@ -31,9 +35,17 @@ def providers():
     return [p for p in PROVIDERS if not (REQUIRE_USER_KEY and KEY_ENV[p] is None)]
 
 
-def needs_key(api_key):
-    """Whether a turn can not run yet because this deployment needs the visitor's own key."""
-    return REQUIRE_USER_KEY and not (api_key or "").strip()
+def demo_left(used):
+    """Demo questions this browser session can still ask on the server's key (0 when this deployment offers none:
+    no REQUIRE_USER_KEY, DEMO_QUESTIONS=0, or no server key for the default model)."""
+    env = KEY_ENV.get(split_spec(MODEL)[0])
+    return max(0, DEMO_QUESTIONS - used) if REQUIRE_USER_KEY and env and os.getenv(env) else 0
+
+
+def needs_key(api_key, used=0):
+    """Whether a turn can not run yet because this deployment needs the visitor's own key (and the session has
+    used up its demo questions)."""
+    return REQUIRE_USER_KEY and not (api_key or "").strip() and not demo_left(used)
 
 
 def split_spec(spec):
@@ -45,16 +57,20 @@ def split_spec(spec):
     return provider, name
 
 
-def make_model(spec=MODEL, api_key=None):
+def make_model(spec=MODEL, api_key=None, demo=False):
     """'provider:model' -> chat model. e.g. openrouter:openai/gpt-oss-120b, groq:openai/gpt-oss-120b,
     anthropic:claude-sonnet-5-5, openai:gpt-5-mini, bedrock_converse:us.amazon.nova-pro-v1:0. api_key overrides the
-    env var."""
+    env var. demo: a demo question on the server's key, which always runs the default MODEL."""
+    own = bool((api_key or "").strip())
+    demo = demo and not own and demo_left(0) > 0
+    spec = MODEL if demo else spec
     provider, name = split_spec(spec)
     if provider not in KEY_ENV:
         raise ValueError(f"Unsupported provider '{provider}'. Use one of: {', '.join(KEY_ENV)}")
-    if REQUIRE_USER_KEY and (needs_key(api_key) or KEY_ENV[provider] is None):
+    if REQUIRE_USER_KEY and not demo and (not own or KEY_ENV[provider] is None):
         raise ValueError("own-key: this deployment runs only with the visitor's own API key")
-    key = api_key or (None if REQUIRE_USER_KEY else os.getenv(KEY_ENV[provider]) if KEY_ENV[provider] else None)
+    server_key = os.getenv(KEY_ENV[provider]) if KEY_ENV[provider] else None
+    key = api_key if own else (server_key if demo or not REQUIRE_USER_KEY else None)
     if provider == "openrouter":  # OpenAI-compatible API; OpenRouter tries FALLBACKS if the model fails or is rate-limited
         backups = [m for m in FALLBACKS if m != name]
         body = {"usage": {"include": True}, **({"models": [name] + backups} if backups else {})}
@@ -99,6 +115,9 @@ ERRORS = [  # (text found in the error, what happened, what to do)
     ("own-key", "Bring your own API key", "This app answers with your key only: open Model in the sidebar, pick a "
                                           "provider and paste its key. It stays in this browser session. Explore, "
                                           "Memory and Data work without one."),
+    ("402", "The key is out of credit", "The demo key's credit is used up (or your key has none). Paste your own "
+                                        "key under Model in the sidebar."),
+    ("limit exceeded", "The key's spending limit is reached", "Paste your own key under Model in the sidebar."),
     ("overloaded", "The model is overloaded", "The provider is busy right now (Anthropic returns 529). Retry in a "
                                               "minute or pick another model."),
     ("credit balance", "The account has no credit", "Add credit to the provider account, or use another key."),
