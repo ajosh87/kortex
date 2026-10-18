@@ -4,14 +4,14 @@
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
 codeFontSize = "0.8rem"
-baseFontSize = 15
+baseFontSize = 14
 headingFontWeights = [700, 600, 600, 600, 600, 600]
 baseRadius = "0.5rem"
 buttonRadius = "0.5rem"
 showWidgetBorder = true
 showSidebarBorder = true
 linkUnderline = false
-paddingTop = "1.5rem"
+paddingTop = "1rem"
 
 [theme.light]
 primaryColor = "#4F46E5"

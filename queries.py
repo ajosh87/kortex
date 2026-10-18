@@ -522,6 +522,22 @@ def sig_map(min_keps=4):
     return {"nodes": nodes, "edges": edges, "total_nodes": len(nodes), "shown_nodes": len(nodes)}, sigs, links
 
 
+def insights():
+    """Dashboard numbers for the Data page, all read from the graph: KEPs by status and stage, merged PRs per day,
+    the most active PR authors, and the most depended-on package (PageRank over Go imports)."""
+    return {
+        "kep_status": q("MATCH (k:KEP) RETURN coalesce(k.status, 'unknown') AS status, count(*) AS n ORDER BY n DESC"),
+        "kep_stage": q("""MATCH (k:KEP) WHERE k.stage IS NOT NULL AND k.stage <> ''
+                          RETURN k.stage AS stage, count(*) AS n ORDER BY n DESC"""),
+        "pr_days": q("MATCH (pr:PR) RETURN substring(pr.merged_at, 0, 10) AS day, count(*) AS n ORDER BY day"),
+        "authors": q("""MATCH (p:Person)-[:AUTHORED]->(pr:PR)
+                        RETURN p.handle AS person, count(pr) AS prs ORDER BY prs DESC LIMIT 5"""),
+        "pagerank": q("""CALL algo.pageRank('Dir', 'IMPORTS') YIELD node, score
+                         OPTIONAL MATCH (x:Dir)-[:IMPORTS]->(node)
+                         RETURN node.path AS package, score, count(DISTINCT x) AS importers ORDER BY score DESC LIMIT 1"""),
+    }
+
+
 def neighbors(kind, key, per=6):
     """One node's direct neighbours for browsing the graph: up to `per` for each relationship type and direction
     (newest first where nodes have dates), with how many there are in all. Rows: rel, out (the relationship

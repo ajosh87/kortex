@@ -94,16 +94,36 @@ BASE_CSS = """<style>
 [data-testid="stMarkdownContainer"] table { display: block; max-width: 100%; overflow-x: auto; }
 /* room to breathe: a readable column in the middle of wide screens, generous margins, roomier cards */
 [data-testid="stMainBlockContainer"], [data-testid="stBottomBlockContainer"] { max-width: 1120px; margin: 0 auto; }
-[data-testid="stMainBlockContainer"] { padding-top: 3rem; padding-bottom: 9rem; }  /* clear of the chat bar */
+[data-testid="stMainBlockContainer"] { padding-top: 3rem; padding-bottom: 7rem; }  /* clear of the chat bar */
+/* compact: more on screen, less scrolling */
+h1 { font-size: 2rem !important; padding-bottom: 0.4rem !important; }
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] { gap: 0.75rem; }
 [data-testid="stBottomBlockContainer"] { padding-top: 0.75rem; padding-bottom: 0.9rem; }
-div[class*="st-key-tile-"] { padding: 1.3rem 1.4rem !important; }
+div[class*="st-key-tile-"] { padding: 0.9rem 1.05rem !important; }
 /* the per-kind counts on the Data page read one step below the totals */
-.st-key-data-kinds [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
+div[class*="st-key-tile-accent-data-counts"] [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 700; letter-spacing: -0.01em; }
+div[class*="st-key-tile-accent-data-counts"] [data-testid="stMetricLabel"] p { font-size: 0.78rem !important; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; opacity: 0.75; }
+.st-key-data-kinds { gap: 0.6rem !important; }
+.st-key-data-kinds > div { flex: 1 1 8.5rem !important; min-width: 8.5rem; max-width: calc(25% - 0.45rem); }
+.st-key-data-kinds [data-testid="stMetric"] { padding: 0.45rem 0.7rem; border-radius: 10px; border: 1px solid rgba(120,120,150,0.22);
+  background: rgba(120,120,150,0.05); }
+div[class*="st-key-tile-accent-data-counts"] .st-key-data-kinds [data-testid="stMetricValue"] { font-size: 1.3rem !important; font-weight: 600; }
+div[class*="st-key-tile-accent-data-counts"] .st-key-data-kinds [data-testid="stMetricLabel"] p { font-size: 0.7rem !important; }
+/* readable answers and calmer card titles */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p, [data-testid="stChatMessage"] li { line-height: 1.65; }
+.st-key-starters h4 { font-size: 1.05rem !important; line-height: 1.35 !important; }
+/* Data dashboard: insight cards and charts sit in even rows that wrap on narrow screens */
+.st-key-data-insights > div { flex: 1 1 9.5rem !important; min-width: 9.5rem; }
+.st-key-data-charts > div { flex: 1 1 12rem !important; min-width: 12rem; }
+.st-key-data-insights h4 { font-size: 0.82rem !important; font-weight: 600 !important; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
+.st-key-data-insights strong { font-size: 1.15rem; word-break: break-word; }
+div[class*="st-key-section-"] p { opacity: 0.8; }
 /* columns wrap onto their own rows when there is no room for them side by side */
 [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
 [data-testid="stColumn"] { min-width: min(100%, 17rem); }
 /* sections: a rule and a small heading above each part of a page */
-div[class*="st-key-section-"] { border-top: 1px solid rgba(120,120,150,0.3); padding-top: 0.85rem; margin-top: 1.6rem; }
+div[class*="st-key-section-"] { border-top: 1px solid rgba(120,120,150,0.3); padding-top: 0.6rem; margin-top: 0.9rem; }
 div[class*="st-key-section-"] p { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 /* starter cards: a wrapping grid, about three across on wide screens and one on phones */
 .st-key-starters > div { flex: 1 1 15rem !important; min-width: 15rem; }
@@ -144,19 +164,24 @@ body:not(:has(.st-key-console-closed)) .st-key-console-tab { display: none; }  /
 }
 /* console: a small header, then a compact monospace log that fills the panel and scrolls */
 .st-key-console-head { padding-bottom: 0.55rem; border-bottom: 1px solid #21262D; }
-.st-key-console-head p { font-size: 0.85rem; margin: 0; }
+.st-key-console-head p { font-size: 0.92rem; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
 .st-key-console-head [data-testid="stButton"] button { min-height: 0 !important; padding: 0.15rem 0.3rem !important; }
 .st-key-console-head [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }  /* no -1rem: title and caption stack */
-.st-key-console-head [data-testid="stCaptionContainer"] p { font-size: 0.78rem; }
+.st-key-console-head [data-testid="stCaptionContainer"] p { font-size: 0.75rem; font-weight: 400; line-height: 1.4; }
 .st-key-console-empty { text-align: center; padding-top: 2.5rem; }
 .st-key-console-empty p { font-family: "Inter", sans-serif !important; }
-.st-key-console-log, .st-key-console-log p, .st-key-console-log summary { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.83rem; }
+.st-key-console-log, .st-key-console-log p, .st-key-console-log summary { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.78rem; }
+.st-key-console-log p code { font-family: inherit !important; font-size: 1em !important; padding: 0.05em 0.3em !important; border-radius: 4px; }
+.st-key-console-log p > code:first-child { font-size: 0.88em !important; margin-right: 0.5em; }  /* the time */
+.st-key-console-log [data-testid="stCode"] pre, .st-key-console-log [data-testid="stCode"] code { font-size: 0.74rem !important; line-height: 1.55 !important; }
+div[class*="st-key-log-"] { padding: 0.12rem 0; }
 [data-testid="stLayoutWrapper"]:has(> .st-key-console-log) { flex: 1 1 0 !important; min-height: 0; height: auto !important; }
 div.st-key-console-log.st-key-console-log { height: 100% !important; max-height: none !important; overflow-y: auto; }
 .st-key-console-log > * { flex-shrink: 0 !important; }  /* lines keep their height; the log scrolls instead */
-.st-key-console-log p { margin: 0; line-height: 1.5; }
+.st-key-console-log p { margin: 0; line-height: 1.6; }
 .st-key-console-log [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }  /* undo Streamlit's -1rem (p has no margin here) */
-.st-key-console-log strong { display: inline-block; min-width: 4.6em; font-weight: 600; }
+.st-key-console-log strong { display: inline-block; min-width: 5.4em; font-weight: 600; font-size: 0.86em; letter-spacing: 0.05em;
+  text-transform: uppercase; }
 .st-key-console-log [data-testid="stExpander"] details { border: 0 !important; box-shadow: none !important; background: transparent !important; }
 .st-key-console-log [data-testid="stExpander"] summary { padding: 0.05rem 0; min-height: 0; }
 .st-key-console-log [data-testid="stExpanderDetails"] { padding: 0.25rem 0 0.5rem 1.4rem; }

@@ -1,4 +1,7 @@
 """Data: what the graph holds, its schema as found in the data, and where it came from."""
+import datetime
+
+import pandas as pd
 import streamlit as st
 
 import queries as Q
@@ -30,14 +33,56 @@ with ui.tile("data-counts", fill="accent"):
         for c in counts:
             st.metric(c["kind_label"], f"{c['n']:,}", width="content")
 
-ui.section("Schema, as found in the data", "schema")
-with ui.tile("data-schema"):
-    ui.graph_view(s["schema"], caption="Every node kind and relationship type in the graph, with how many relationships of each.")
-
 @st.cache_data(ttl=300, show_spinner="Grouping the whole graph by SIG…")
 def sig_map():
     return traced(Q.sig_map)
 
+
+@st.cache_data(ttl=300, show_spinner="Reading insights from the graph…")
+def insights():
+    return traced(Q.insights)
+
+
+def week(day):
+    """The Monday of a date's week, so merged PRs can be counted per week."""
+    d = datetime.date.fromisoformat(day)
+    return (d - datetime.timedelta(days=d.weekday())).isoformat()
+
+
+ins, ins_queries = insights()
+(sig_graph, sig_rows, sig_links), _ = sig_map()
+ui.work("Data page: insights from the graph", ins_queries, "KEPs by status and stage, PRs per week, top authors, PageRank")
+ui.section("Insights", "insights")
+top_sig, top_author, top_pkg = sig_rows[0], (ins["authors"] or [{}])[0], (ins["pagerank"] or [{}])[0]
+pair = max(sig_links, key=lambda r: r["n"]) if sig_links else {}
+cards = [("indigo", ":material/groups:", "Busiest SIG", top_sig["sig"], f"owns {top_sig['keps']} KEPs and {top_sig['folders']} folders"),
+         ("teal", ":material/hub:", "Most depended-on code", (top_pkg.get("package") or "?").removeprefix("staging/src/"), f"{top_pkg.get('importers', 0)} packages import it (PageRank)"),
+         ("amber", ":material/person:", "Most active author", f"@{top_author.get('person', '?')}",
+          f"{top_author.get('prs', 0)} merged PRs since {s['source'].get('prs_since', '?')}"),
+         ("rose", ":material/handshake:", "Closest SIGs", f"{pair.get('owner', '?')} → {pair.get('partner', '?')}",
+          f"{pair.get('n', 0)} KEPs owned by the first involve the second")]
+with st.container(horizontal=True, gap="medium", key="data-insights"):
+    for hue, icon, label, value, note in cards:
+        with ui.tile(f"insight-{label.lower().replace(' ', '-')}", fill=hue, height="stretch"):
+            st.markdown(f"#### {icon} {label}")
+            st.markdown(f"**{value}**")
+            st.caption(note)
+
+weekly = pd.DataFrame(ins["pr_days"]).assign(week=lambda d: d["day"].map(week)).groupby("week", as_index=False)["n"].sum()
+with st.container(horizontal=True, gap="medium", key="data-charts"):
+    with ui.tile("chart-prs", height="stretch"):
+        st.markdown("**Merged pull requests per week**")
+        st.bar_chart(weekly.rename(columns={"n": "PRs"}), x="week", y="PRs", height=180, x_label="", y_label="")
+    with ui.tile("chart-keps", height="stretch"):
+        st.markdown("**KEPs by status**")
+        st.bar_chart(pd.DataFrame(ins["kep_status"]).rename(columns={"n": "KEPs"}), x="status", y="KEPs",
+                     horizontal=True, height=180, x_label="", y_label="", sort="-KEPs")
+    with ui.tile("chart-stages", height="stretch"):
+        st.markdown("**KEPs by stage**")
+        stages = pd.DataFrame([r for r in ins["kep_stage"] if r["stage"] in ("alpha", "beta", "stable", "deprecated")])
+        st.bar_chart(stages.rename(columns={"n": "KEPs"}), x="stage", y="KEPs", horizontal=True, height=180,
+                     x_label="", y_label="", sort="-KEPs")
+st.caption(f"Top authors in the history window: " + ", ".join(f"@{a['person']} ({a['prs']})" for a in ins["authors"]) + ".")
 
 @st.cache_data(ttl=300, show_spinner="Opening it…")
 def neighbors(kind, key):
@@ -110,6 +155,10 @@ with ui.tile("data-sig-map"):
     ui.graph_view(graph, key=BROWSE, caption=f"All {len(sigs)} SIGs; lines join SIGs sharing 4 or more KEPs, and each "
                                              f"SIG to its strongest partner; {len(graph['nodes'])} nodes shown."
                                              + (f" No shared KEPs or leads: {', '.join(alone)}." if alone else ""))
+
+ui.section("Schema, as found in the data", "schema")
+with ui.tile("data-schema"):
+    ui.graph_view(s["schema"], caption="Every node kind and relationship type in the graph, with how many relationships of each.")
 
 ui.section("Source", "commit")
 with st.container(horizontal=True, gap="small"):
