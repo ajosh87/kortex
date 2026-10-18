@@ -1,0 +1,9 @@
+.venv/
+data/
+out/
+.env
+__pycache__/
+.streamlit/secrets.toml
+backups/
+.ruff_cache/
+.claude/

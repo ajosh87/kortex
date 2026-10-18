@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 64">
+  <rect width="64" height="64" rx="14" fill="#4F46E5"/>
+  <g stroke="#FFFFFF" stroke-width="6" stroke-linecap="round">
+    <line x1="21" y1="13" x2="21" y2="51"/>
+    <line x1="21" y1="32" x2="43" y2="15"/>
+    <line x1="21" y1="32" x2="43" y2="49"/>
+  </g>
+  <circle cx="43" cy="15" r="6" fill="#FFDE59"/>
+  <circle cx="43" cy="49" r="6" fill="#FFDE59"/>
+  <circle cx="21" cy="32" r="6" fill="#FFDE59"/>
+  <text x="78" y="45" font-family="Space Grotesk, Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="36"
+        font-weight="700" letter-spacing="-1" fill="#6366F1">Kortex</text>
+</svg>

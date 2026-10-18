@@ -1,0 +1,69 @@
+# Kubernetes org brain: indigo accent on neutral greys, light and dark (users can switch in Settings).
+
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+codeFontSize = "0.8rem"
+baseFontSize = 15
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+baseRadius = "0.6rem"
+buttonRadius = "0.6rem"
+showWidgetBorder = true
+showSidebarBorder = true
+linkUnderline = false
+paddingTop = "1.5rem"
+
+[theme.light]
+primaryColor = "#4F46E5"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F5FA"
+textColor = "#111827"
+borderColor = "#E3E5EE"
+linkColor = "#4F46E5"
+codeBackgroundColor = "#F4F5FA"
+codeTextColor = "#3730A3"
+blueColor = "#2563EB"
+greenColor = "#16A34A"
+orangeColor = "#EA580C"
+violetColor = "#7C3AED"
+grayColor = "#6B7280"
+dataframeHeaderBackgroundColor = "#F4F5FA"
+dataframeBorderColor = "#E3E5EE"
+
+[theme.dark]
+primaryColor = "#6366F1"
+backgroundColor = "#0C0E16"
+secondaryBackgroundColor = "#161A26"
+textColor = "#E8EAF2"
+borderColor = "#262B3B"
+linkColor = "#A5B4FC"
+codeBackgroundColor = "#161A26"
+codeTextColor = "#C7D2FE"
+blueColor = "#60A5FA"
+greenColor = "#4ADE80"
+orangeColor = "#FB923C"
+violetColor = "#A78BFA"
+grayColor = "#9CA3AF"
+dataframeHeaderBackgroundColor = "#161A26"
+dataframeBorderColor = "#262B3B"
+
+[theme.light.sidebar]
+backgroundColor = "#F7F8FC"
+secondaryBackgroundColor = "#FFFFFF"
+codeBackgroundColor = "#EEF0F7"
+textColor = "#111827"
+borderColor = "#E3E5EE"
+primaryColor = "#4F46E5"
+linkColor = "#4F46E5"
+
+[theme.dark.sidebar]
+backgroundColor = "#080A10"
+secondaryBackgroundColor = "#161A26"
+codeBackgroundColor = "#161A26"
+textColor = "#E8EAF2"
+borderColor = "#262B3B"
+primaryColor = "#6366F1"
+linkColor = "#A5B4FC"
+
+[client]
+toolbarMode = "minimal"
