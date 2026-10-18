@@ -137,19 +137,18 @@ def elements(graph, colors, fonts):
     return nodes + edges
 
 
-def stylesheet(brutal, ink, background, edge_labels=True, accent="#4F46E5"):
-    """Cytoscape styles: soft rounded nodes, or neo-brutalist square nodes with thick outlines."""
-    edge = ink if brutal else "#94a3b8"
+def stylesheet(background, edge_labels=True, accent="#4F46E5"):
+    """Cytoscape styles: soft rounded nodes with hairline outlines; the selected node gets an indigo ring."""
+    edge = "#9AA3B5"
     return [
         {"selector": "node", "style": {
             "label": "data(label)", "background-color": "data(color)", "color": "data(font)",
-            "shape": "rectangle" if brutal else "round-rectangle", "width": "data(w)", "height": "data(h)",
-            "border-width": 2.5 if brutal else 1, "border-color": "#111111" if brutal else "#64748b",
-            "font-size": 12, "font-weight": 700 if brutal else 500,
-            "font-family": "Space Grotesk, Inter, sans-serif" if brutal else "Inter, sans-serif",
+            "shape": "round-rectangle", "width": "data(w)", "height": "data(h)",
+            "border-width": 1, "border-color": "rgba(28,32,48,0.28)",
+            "font-size": 12, "font-weight": 500, "font-family": "Inter, sans-serif",
             "text-wrap": "wrap", "text-valign": "center", "text-halign": "center"}},
         {"selector": "edge", "style": {
-            "curve-style": "bezier", "width": 1.8 if brutal else 1, "line-color": edge,
+            "curve-style": "bezier", "width": 1.2, "line-color": edge,
             "target-arrow-shape": "triangle", "target-arrow-color": edge, "arrow-scale": 0.9,
             "label": "data(label)" if edge_labels else "", "font-size": 9, "color": edge, "text-rotation": "autorotate",
             "text-background-color": background, "text-background-opacity": 0.9, "text-background-padding": 2}},
@@ -170,7 +169,7 @@ def layout(name, n=30):
             "gravity": 0.3, "componentSpacing": 80, "numIter": 2500}
 
 
-def show(graph, key, *, colors, fonts, brutal, ink, background, layout_name="tree", edge_labels=True):
+def show(graph, key, *, colors, fonts, background, accent="#4F46E5", layout_name="tree", edge_labels=True):
     """Draw an interactive graph. Returns the id of the node the user last clicked (kept across reruns)."""
     pick_key = f"{key}-pick"
 
@@ -181,7 +180,7 @@ def show(graph, key, *, colors, fonts, brutal, ink, background, layout_name="tre
 
     height = int(min(560, max(300, 22 * len(graph["nodes"]))))
     _GRAPH(key=key, on_selected_change=picked, data={
-        "elements": elements(graph, colors, fonts), "style": stylesheet(brutal, ink, background, edge_labels),
+        "elements": elements(graph, colors, fonts), "style": stylesheet(background, edge_labels, accent),
         "layout": layout(layout_name, len(graph["nodes"])), "height": height, "selected": st.session_state.get(pick_key), "min_zoom": 0.8,
         "hint": "Click a node for its details · drag to move · Ctrl + scroll or the buttons to zoom."})
     return st.session_state.get(pick_key)

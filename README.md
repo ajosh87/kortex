@@ -175,12 +175,12 @@ drag, Ctrl + scroll or the buttons to zoom, and click a node to see its profile 
 SIG, design decisions, importers for a folder; teams, folders and KEPs for a person; and so on), read from the
 graph by `tools.node_card()`. A plain scroll keeps scrolling the page.
 
-**Look and feel.** Content sits in a readable column with room between elements. Overview screens (the Ask
-landing page, Data) use a bento grid of tiles that wraps on narrow screens; answer and detail views stay as
-simple stacked sections, so tiles never nest. A switch in the top bar turns a neo-brutalist style on or off (thick
-borders, hard shadows, flat colours, bold type, square graph nodes) without changing the layout. The style is a
-small stylesheet in `ui.apply_style()` that targets our own keys and Streamlit's `data-testid` attributes; with
-it off, the app uses the plain light/dark theme from `config.toml`.
+**Look and feel.** One calm look built from the logo's colours: neutral surfaces with 1 px hairlines, rounded
+corners on one scale (8 px controls, 12 px cards and the composer), no hard shadows, the logo's indigo for actions
+and the open page, and its yellow only as a small highlight under each page title. Your questions are soft indigo
+bubbles; answers read straight on the page. Light and dark follow the viewer's system setting. Content sits in a
+readable column; overview screens use a grid of cards that wraps on narrow screens. The stylesheet is in
+`ui.apply_style()` and targets our own keys and Streamlit's `data-testid` attributes.
 
 ## Transparency: what you see for every answer
 

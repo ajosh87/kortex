@@ -44,7 +44,7 @@ ui.section("Result", "task_alt")
 
 r = run(picked, choice["kind"], choice["key"])
 ui.work(f"▶ {ui.call(r['tool'], r['args'])} (Explore, no model)", r["queries"], r["result"], r["ms"])
-with ui.tile("explore-summary", fill="yellow"):
+with ui.tile("explore-summary", fill="accent"):
     st.markdown(f"#### {r['title']}")
     st.markdown(r["result"])
     with st.container(horizontal=True, gap="small", vertical_alignment="center"):

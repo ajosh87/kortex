@@ -51,7 +51,24 @@ def open_chat(session):
 
 
 with st.sidebar:
-    st.text_input("Your name", value="demo", key="user", help="Chats and memory are kept per name, across sessions.")
+    if "user" not in st.session_state:  # the name field sits lower down, but the chat list needs it first
+        st.session_state.user = "demo"
+    chats = MG.sessions(st.session_state.user, st.session_state.session, limit=10)
+    ui.section("Chats", "forum")
+    if not chats:
+        st.caption("Your chats appear here once you ask something.")
+    with st.container(key="chats", gap=None):
+        for c in chats:
+            if st.button(c["first_question"], key=f"chat-{c['session']}", width="stretch",
+                         type="secondary" if c["current"] else "tertiary",
+                         help=f"{c['when']} · {c['turns']} question{'s' if c['turns'] != 1 else ''}"):
+                open_chat(c["session"])
+                if page.title == "Memory":  # the Memory page shows the open chat; elsewhere, go to the chat
+                    st.rerun()
+                st.switch_page("app_pages/ask.py")
+
+    ui.section("Settings", "tune")
+    st.text_input("Your name", key="user", help="Chats and memory are kept per name, across sessions.")
     default_provider, default_model = M.split_spec(M.MODEL)
     providers = M.providers()
     with st.expander("Model", icon=":material/tune:", expanded=M.needs_key(st.session_state.get("api_key"))):
@@ -68,20 +85,6 @@ with st.sidebar:
             if M.REQUIRE_USER_KEY:
                 st.caption("This app answers with your own key only.")
     st.session_state.spec = f"{provider}:{model.strip()}"
-
-    chats = MG.sessions(st.session_state.user, st.session_state.session, limit=10)
-    ui.section("Chats", "forum")
-    if not chats:
-        st.caption("Your chats appear here once you ask something.")
-    with st.container(key="chats", gap=None):
-        for c in chats:
-            if st.button(c["first_question"], key=f"chat-{c['session']}", width="stretch",
-                         type="secondary" if c["current"] else "tertiary",
-                         help=f"{c['when']} · {c['turns']} question{'s' if c['turns'] != 1 else ''}"):
-                open_chat(c["session"])
-                if page.title == "Memory":  # the Memory page shows the open chat; elsewhere, go to the chat
-                    st.rerun()
-                st.switch_page("app_pages/ask.py")
 
     st.space("medium")
     with ui.tile("credits"):

@@ -1,4 +1,4 @@
-# Kubernetes org brain: indigo accent on neutral greys, light and dark (users can switch in Settings).
+# Kortex: the logo's indigo on calm neutrals, light and dark (follows the viewer's system setting).
 
 [theme]
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -6,8 +6,8 @@ codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+
 codeFontSize = "0.8rem"
 baseFontSize = 15
 headingFontWeights = [700, 600, 600, 600, 600, 600]
-baseRadius = "0.6rem"
-buttonRadius = "0.6rem"
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
 showWidgetBorder = true
 showSidebarBorder = true
 linkUnderline = false
@@ -15,10 +15,10 @@ paddingTop = "1.5rem"
 
 [theme.light]
 primaryColor = "#4F46E5"
-backgroundColor = "#FFFFFF"
+backgroundColor = "#F7F7FB"
 secondaryBackgroundColor = "#F4F5FA"
-textColor = "#111827"
-borderColor = "#E3E5EE"
+textColor = "#1C2030"
+borderColor = "#E4E6EF"
 linkColor = "#4F46E5"
 codeBackgroundColor = "#F4F5FA"
 codeTextColor = "#3730A3"
@@ -32,8 +32,8 @@ dataframeBorderColor = "#E3E5EE"
 
 [theme.dark]
 primaryColor = "#6366F1"
-backgroundColor = "#0C0E16"
-secondaryBackgroundColor = "#161A26"
+backgroundColor = "#0F1117"
+secondaryBackgroundColor = "#171A24"
 textColor = "#E8EAF2"
 borderColor = "#262B3B"
 linkColor = "#A5B4FC"
@@ -48,7 +48,7 @@ dataframeHeaderBackgroundColor = "#161A26"
 dataframeBorderColor = "#262B3B"
 
 [theme.light.sidebar]
-backgroundColor = "#F7F8FC"
+backgroundColor = "#F1F2F7"
 secondaryBackgroundColor = "#FFFFFF"
 codeBackgroundColor = "#EEF0F7"
 textColor = "#111827"
@@ -57,7 +57,7 @@ primaryColor = "#4F46E5"
 linkColor = "#4F46E5"
 
 [theme.dark.sidebar]
-backgroundColor = "#080A10"
+backgroundColor = "#0B0D13"
 secondaryBackgroundColor = "#161A26"
 codeBackgroundColor = "#161A26"
 textColor = "#E8EAF2"

@@ -21,7 +21,7 @@ st.markdown(f"Loaded {s['source'].get('loaded_at', '?')} from public Kubernetes 
             "as GitHub handles; names, emails and employers are not loaded.")
 ui.section("Counts", "tag")
 
-with ui.tile("data-counts", fill="yellow"):
+with ui.tile("data-counts", fill="accent"):
     with st.container(horizontal=True, gap="large"):
         st.metric("Nodes", f"{s['nodes']:,}")
         st.metric("Relationships", f"{s['relationships']:,}")
