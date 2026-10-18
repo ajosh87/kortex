@@ -62,8 +62,9 @@ def export():
              for i, label, props in _all("MATCH (n) RETURN id(n), labels(n)[0], properties(n) ORDER BY id(n)")]
     edges = [{"a": a, "type": t, "b": b}
              for a, t, b in _all("MATCH (a)-[r]->(b) RETURN id(a), type(r), id(b) ORDER BY id(r)")]
-    indexes = [{"label": r[0], "properties": r[1]} for r in _run(GRAPH, "CALL db.indexes() YIELD label, properties, entitytype "
-                                                                       "WHERE entitytype = 'NODE' RETURN label, properties")]
+    indexes = [{"label": r[0], "properties": r[1], "types": r[2]}
+               for r in _run(GRAPH, "CALL db.indexes() YIELD label, properties, types, entitytype "
+                                    "WHERE entitytype = 'NODE' RETURN label, properties, types")]
     _write(KUBERNETES, {"nodes": nodes, "edges": edges, "indexes": indexes})
     turns = sorted(({"session": s["session"], "question": t["question"], "answer": t["answer"], "at": t["at"],
                      "refs": [{"kind": r["kind"], "key": r["key"], "title": r.get("title")} for r in t["refs"]]}
@@ -100,10 +101,15 @@ def restore(graph=GRAPH):
     for lab in by_label:
         _run(temp, f"MATCH (n:{lab}) SET n._sid = NULL")
         _run(temp, f"DROP INDEX ON :{lab}(_sid)")
-    for ix in data["indexes"]:
-        if NAME.match(ix["label"]) and all(NAME.match(p) for p in ix["properties"]):
+    for ix in data["indexes"]:  # exact-match (range) indexes and full-text ones (document search)
+        if not (NAME.match(ix["label"]) and all(NAME.match(p) for p in ix["properties"])):
+            continue
+        types = ix.get("types") or {}
+        exact = [p for p in ix["properties"] if "RANGE" in types.get(p, ["RANGE"])]
+        text = [p for p in ix["properties"] if "FULLTEXT" in types.get(p, [])]
+        for cypher in ([f"CREATE INDEX FOR (n:{ix['label']}) ON ({', '.join('n.' + p for p in exact)})"] if exact else []) +                       ([f"CALL db.idx.fulltext.createNodeIndex('{ix['label']}', {', '.join(repr(p) for p in text)})"] if text else []):
             try:
-                _run(temp, f"CREATE INDEX FOR (n:{ix['label']}) ON ({', '.join('n.' + p for p in ix['properties'])})")
+                _run(temp, cypher)
             except ResponseError:
                 pass  # already there
     if exists(graph):

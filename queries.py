@@ -2,6 +2,7 @@
 
 Each function returns plain rows (list of dicts). The agent's tools are thin wrappers around these.
 """
+import re
 from datetime import datetime
 from functools import cache
 
@@ -10,17 +11,17 @@ from db import q
 GITHUB = "https://github.com/kubernetes"
 KIND_LABEL = {"Person": "Person", "Dir": "Folder", "KEP": "KEP", "SIG": "SIG", "Team": "Team",
               "FeatureGate": "Feature gate", "PR": "Pull request", "Component": "Binary", "Subproject": "Subproject",
-              "Turn": "Question"}
+              "Turn": "Question", "Doc": "Document"}
 
 # For table cells that hold a node URL: the regex that pulls the readable key back out of it.
 LINK_TEXT = {"Person": r"https://github\.com/(.*)", "Dir": r".*/tree/[^/]+/(.*)", "KEP": r".*/issues/(\d+)",
-             "PR": r".*/pull/(\d+)", "SIG": r".*/tree/[^/]+/(.*)"}
+             "PR": r".*/pull/(\d+)", "SIG": r".*/tree/[^/]+/(.*)", "Doc": r".*/blob/[^/]+/(.*)"}
 
 
 @cache
-def source_ref():
-    """The kubernetes/kubernetes commit the graph was loaded from, so code links show exactly what was loaded."""
-    rows = q("MATCH (m:Meta {id: 'load'}) RETURN m.kubernetes_commit AS c")
+def source_ref(repo="kubernetes"):
+    """The commit of kubernetes/<repo> the graph was loaded from, so links show exactly what was loaded."""
+    rows = q(f"MATCH (m:Meta {{id: 'load'}}) RETURN m.{repo}_commit AS c")
     return (rows[0]["c"] if rows else None) or "master"
 
 
@@ -34,11 +35,12 @@ def url(kind, key):
         "Team": f"{GITHUB}/kubernetes/blob/{source_ref()}/OWNERS_ALIASES",
         "PR": f"{GITHUB}/kubernetes/pull/{key}",
         "FeatureGate": "https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/",
+        "Doc": f"{GITHUB}/community/blob/{source_ref('community')}/{key}",
     }.get(kind)
 
 
 # The identifying property of a node, by kind (KEPs have both a path and a number; the number is the key).
-NODE_KEY = ("CASE WHEN n:Dir THEN n.path WHEN n:KEP THEN n.number WHEN n:Person THEN n.handle "
+NODE_KEY = ("CASE WHEN n:Dir THEN n.path WHEN n:Doc THEN n.path WHEN n:KEP THEN n.number WHEN n:Person THEN n.handle "
             "WHEN n:PR THEN toString(n.number) ELSE n.name END")
 
 
@@ -330,6 +332,49 @@ def search(text, limit=10):
         RETURN kind, key, label LIMIT $limit""", {"t": t, "limit": limit})
 
 
+# ---------- community documents (SIG READMEs, charters, annual reports) ----------
+
+def _fulltext(text):
+    """A safe full-text query from free text: plain words only, all required, the last one also as a prefix
+    ('annual rep' finds 'annual report'). Empty when there are no usable words."""
+    words = [w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 1][:8]
+    return " ".join(words[:-1] + [words[-1] + "*" if len(words[-1]) > 2 else words[-1]]) if words else ""
+
+
+def snippet(text, query, width=260):
+    """The part of a document around the first query word it contains."""
+    low = text.lower()
+    at = min((i for i in (low.find(w) for w in re.findall(r"[a-z0-9]{3,}", query.lower())) if i >= 0), default=0)
+    start = max(0, at - width // 3)
+    return ("…" if start else "") + " ".join(text[start:start + width].split()) + "…"
+
+
+def search_docs(text, limit=8):
+    """Community documents matching the words (FalkorDB full-text index on title and text, best match first)."""
+    query = _fulltext(text)
+    if not query:
+        return []
+    rows = q("""
+        CALL db.idx.fulltext.queryNodes('Doc', $query) YIELD node, score
+        WITH node, score ORDER BY score DESC LIMIT $limit
+        OPTIONAL MATCH (node)-[:ABOUT]->(s:SIG)
+        RETURN node.path AS path, node.title AS title, node.kind AS kind, node.year AS year, node.group AS group,
+               s.name AS sig, node.text AS text, score
+        ORDER BY score DESC""", {"query": query, "limit": limit})
+    return [{**{k: v for k, v in r.items() if k != "text"}, "snippet": snippet(r["text"] or "", text)} for r in rows]
+
+
+def doc(path):
+    """One community document: its text and what it links to in the graph."""
+    return q("""
+        MATCH (d:Doc {path: $p})
+        OPTIONAL MATCH (d)-[:ABOUT]->(s:SIG) WITH d, collect(s.name) AS sigs
+        OPTIONAL MATCH (d)-[:MENTIONS]->(p:Person) WITH d, sigs, collect(p.handle) AS people
+        OPTIONAL MATCH (d)-[:MENTIONS]->(k:KEP)
+        RETURN d.path AS path, d.title AS title, d.kind AS kind, d.year AS year, d.group AS group, d.text AS text,
+               sigs, people, collect({kep: k.number, title: k.title}) AS keps""", {"p": path.strip().lstrip("/")})
+
+
 # ---------- agent memory: conversations are part of the graph ----------
 
 def when(ms):
@@ -359,6 +404,10 @@ def data_scope():
             f"- Merged pull requests: {prs['n']} from {str(prs['first'])[:10]} to {str(prs['last'])[:10]}. "
             "'Experts', 'recent changes' and PR counts only see that window.\n"
             "- OWNERS files, SIGs and KEPs are loaded for the whole project.\n"
+            f"- Community documents: {q('MATCH (d:Doc) RETURN count(d) AS n')[0]['n']} from kubernetes/community (SIG and "
+            "working-group READMEs, charters, annual reports, and the DevStats README). People in them appear only "
+            "as GitHub handles; other names were replaced by [name]. Nothing else from that repo is loaded (no meeting "
+            "notes, no DevStats numbers).\n"
             f"- Loaded {loaded}. Nothing after that is known.")
 
 
@@ -445,4 +494,5 @@ SCHEMA = """
 (:Person)-[:KEP_AUTHOR|KEP_REVIEWER|KEP_APPROVER]->(:KEP)
 (:KEP)-[:SEE_ALSO|REPLACES]->(:KEP)
 (:KEP)-[:INTRODUCES]->(:FeatureGate)-[:AFFECTS]->(:Component)
+(:Doc {path, title, kind, year, group, text})-[:ABOUT]->(:SIG); (:Doc)-[:MENTIONS]->(:Person|:KEP)  # community docs
 """

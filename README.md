@@ -5,7 +5,7 @@
 Built for [Graph Hacks](https://www.wemakedevs.org/hackathons/falkordb) by WeMakeDevs · powered by
 [FalkorDB](https://www.falkordb.com) · made with [Streamlit](https://streamlit.io).
 
-**Live app: https://kortex-falkordb.streamlit.app** (bring your own OpenRouter, Groq or OpenAI key for the chat;
+**Live app: https://kortex-falkordb.streamlit.app** (bring your own OpenRouter, Anthropic, Groq or OpenAI key for the chat;
 Explore, Memory and Data work without one).
 
 Kubernetes has thousands of contributors, 24 departments (SIGs), formal design decisions (KEPs),
@@ -26,6 +26,7 @@ Tracks: **Company Brain** (primary), **Agents That Act on Connected Data**, **Ag
 | Which design decisions constrain this code? | Folder → feature gates its code checks → KEPs that introduced them → linked KEPs |
 | Who would we miss most in sig-node? | Approvers per SIG-owned folder (teams expanded); single-approver folders |
 | What changed recently, or since I last asked? | Merged PRs under the folder and updated KEPs behind it, since a date from graph memory |
+| What did SIG Node's 2024 annual report say? What is DevStats? | FalkorDB **full-text index** over 224 community documents (SIG and working-group READMEs, charters, annual reports, the DevStats README), each linked to its SIG and to the KEPs and people it mentions |
 | What did I ask last time? | Conversations are stored in the graph and linked to every node they used, so recall works by topic across sessions |
 | Write a review plan for my change | **Action**: owners, reviewers, KEPs, blast radius and recent contributors in a markdown file you can download |
 
@@ -46,6 +47,8 @@ Tracks: **Company Brain** (primary), **Agents That Act on Connected Data**, **Ag
 (:Person)-[:KEP_AUTHOR|KEP_REVIEWER|KEP_APPROVER]->(:KEP)
 (:KEP)-[:SEE_ALSO|REPLACES]->(:KEP)
 (:KEP)-[:INTRODUCES]->(:FeatureGate)-[:AFFECTS]->(:Component)
+(:Doc {path, title, kind, year, group, text})-[:ABOUT]->(:SIG)    community docs, full-text index on title + text
+(:Doc)-[:MENTIONS]->(:Person|:KEP)
 (:Meta {id: 'load', commits, counts, schema, loaded_at})                                                 provenance
 ```
 
@@ -56,8 +59,8 @@ Conversation memory is **not** in this graph. Each user has a memory graph of th
 (:Turn)-[:MENTIONS]->(:Ref {id, kind, key, title})     what the answer used, by its key in the Kubernetes graph
 ```
 
-About 9,900 nodes and 32,000 relationships: 586 OWNERS files, ~645 KEPs with their summaries, 24 SIGs,
-~1,200 merged PRs, Go imports for the kubelet and scheduler. The **Data** page shows the exact counts,
+About 10,100 nodes and 33,500 relationships: 586 OWNERS files, ~645 KEPs with their summaries, 24 SIGs,
+~1,200 merged PRs, Go imports for the kubelet and scheduler, 224 community documents. The **Data** page shows the exact counts,
 the schema as found in the data, and the commits it was loaded from.
 
 Data cleaning at load time: SIG names misspelled in KEP files (e.g. `sig-scheduler`) are mapped to the real
@@ -277,7 +280,8 @@ To load fresh data instead of the snapshot, clone the public repositories (spars
 ```bash
 mkdir data && cd data
 git clone --depth 1 --filter=blob:none --sparse https://github.com/kubernetes/community.git
-git -C community sparse-checkout set --no-cone /sigs.yaml
+git -C community sparse-checkout set --no-cone /sigs.yaml '/sig-*/README.md' '/sig-*/charter.md' '/sig-*/annual-report-*.md' \
+  '/wg-*/README.md' '/wg-*/charter.md' '/wg-*/annual-report-*.md' /sig-contributor-experience/devstats/README.md
 git clone --depth 1 --filter=blob:none --sparse https://github.com/kubernetes/enhancements.git
 git -C enhancements sparse-checkout set keps
 git clone --filter=blob:none --no-checkout --shallow-since=2025-04-01 https://github.com/kubernetes/kubernetes.git
@@ -306,6 +310,7 @@ Judges can paste their own key in the sidebar; it stays in that browser session 
 | Provider | Example `MODEL` | Key |
 |---|---|---|
 | OpenRouter (default) | `openrouter:openai/gpt-oss-120b` | `OPENROUTER_API_KEY` |
+| Anthropic (Claude) | `anthropic:claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
 | Groq | `groq:openai/gpt-oss-120b` | `GROQ_API_KEY` |
 | OpenAI | `openai:gpt-5-mini` | `OPENAI_API_KEY` |
 | AWS Bedrock | `bedrock_converse:us.amazon.nova-pro-v1:0` | AWS credential chain + `AWS_REGION` |
@@ -376,11 +381,17 @@ All data is public, from the Kubernetes GitHub repositories
 names, emails and employers in `sigs.yaml` are dropped, and PR authors come from the merge bot's commit
 message rather than commit emails.
 
+Community documents are scrubbed before they are stored: leadership lines keep only the handle, the names of
+known leads become their `@handle`, e-mail addresses go, and any other run of capitalised words containing a
+word never seen in lower case across the documents and KEPs (personal names, employers, some places) becomes
+`[name]`. It errs towards removing too much; a lone first name starting a sentence can remain. The agent is
+told never to guess who a `[name]` was.
+
 ## AI assistance disclosure
 
 Most of this code was written with [Claude Code](https://claude.com/claude-code) (Anthropic's AI coding
 assistant) in a guided session; commits carry a `Co-Authored-By: Claude` line, and the app says so in its sidebar.
 The author chose the problem and the data, set the design rules (functional style, a UI that only renders what
 the pipeline returns, transparency for every answer, per-user memory, security limits), reviewed the changes and
-tested the app. At run time, answers come from the model the user picks (OpenRouter, Groq, OpenAI or Bedrock).
+tested the app. At run time, answers come from the model the user picks (OpenRouter, Anthropic, Groq, OpenAI or Bedrock).
 The demo video's voice-over is AI-generated (a Microsoft neural voice through edge-tts).

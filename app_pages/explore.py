@@ -1,9 +1,13 @@
-"""Explore: the agent's graph walks, run directly on any folder, KEP, person or SIG. No LLM involved."""
+"""Explore: the agent's graph walks, run directly on any folder, KEP, person, SIG or document. No LLM involved."""
 import streamlit as st
 
+import queries as Q
 import tools as T
 import ui
 from db import traced
+
+
+PLURAL = {"Dir": "folders", "KEP": "KEPs", "Person": "people", "SIG": "SIGs", "Doc": "community documents"}
 
 
 @st.cache_data(ttl=600, max_entries=200, show_spinner="Searching the graph…")
@@ -22,8 +26,8 @@ st.markdown("See exactly what the agent sees. Pick anything in the Kubernetes gr
 ui.section("Pick what to explore", "tune")
 
 with st.container(horizontal=True, vertical_alignment="bottom", gap="medium"):
-    text = st.text_input("1 · Find a folder, KEP, person or SIG", value="eviction", type="search", live="300ms",
-                         placeholder="e.g. pkg/scheduler, sidecar, pohly, sig-node")
+    text = st.text_input("1 · Find a folder, KEP, person, SIG or document", value="eviction", type="search", live="300ms",
+                         placeholder="e.g. pkg/scheduler, sidecar, pohly, sig-node, annual report")
     matches, search_queries = search(text.strip()) if len(text.strip()) >= 2 else ([], [])
     choice = st.selectbox("Match", matches, index=0 if matches else None, key="explore-match",
                           format_func=lambda n: f"{n['kind_label']} · {n['label']}" + (f" · {n['title']}" if n.get("title") else ""),
@@ -36,6 +40,17 @@ picked = st.segmented_control("2 · Pick a question", [a["tool"] for a in action
                               default=actions[0]["tool"] if actions else None, required=bool(actions),
                               key=f"view-{choice['kind'] if choice else 'none'}",
                               format_func=lambda t: next(f"{a['icon']} {a['label']}" for a in actions if a["tool"] == t))
+if text.strip() and len(text.strip()) >= 2 and not matches:
+    with ui.tile("explore-empty"):
+        st.markdown(f"#### :material/search_off: Nothing in the graph matches “{text.strip()}”")
+        counts = Q.stats()["counts"]
+        st.markdown("Explore searches only what was loaded into the graph: "
+                    + ", ".join(f"{c['n']:,} {PLURAL[c['kind']]}" for c in counts if c["kind"] in PLURAL)
+                    + ". Names are matched as fragments (folder paths, KEP titles, GitHub handles, SIG names); "
+                      "documents by their words (SIG and working-group READMEs, charters, annual reports, the DevStats README).")
+        st.caption("Not loaded: issues, meeting notes, Slack, mailing lists, kubernetes.io docs and DevStats numbers. "
+                   "The Data page lists every source and what each one covers.")
+    st.stop()
 if not choice or not picked:
     st.caption("Type at least two characters and pick a match.")
     st.stop()

@@ -66,7 +66,7 @@ def linkify(text, refs):
         return re.sub(r"(?<![\w\[&])#(\d{4,7})\b", sub("PR", lambda n: f"#{n}"), t)
 
     def code(value):  # `pkg/kubelet` -> folder link; `klueska` (a handle written as code) -> @klueska link
-        if n := known.get(("Dir", value.lower())):
+        if n := known.get(("Dir", value.lower())) or known.get(("Doc", value.lower())):
             return f"[`{value}`]({n['url']})"
         if n := known.get(("Person", value.lower().lstrip("@"))):
             return f"[@{value.lstrip('@')}]({n['url']})"

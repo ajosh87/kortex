@@ -36,14 +36,25 @@ GAP = 0.8  # seconds of quiet after each scene's narration
 # A visible cursor: headless recordings show none, so viewers could not follow the clicks.
 CURSOR = """
 window.addEventListener('DOMContentLoaded', () => {
-  const dot = document.createElement('div');
-  Object.assign(dot.style, {position: 'fixed', left: '-40px', top: '-40px', width: '20px', height: '20px',
-    borderRadius: '50%', background: 'rgba(79,70,229,0.28)', border: '2px solid #4F46E5', pointerEvents: 'none',
-    zIndex: 2147483647, transform: 'translate(-50%,-50%)', transition: 'transform .1s ease'});
-  document.body.appendChild(dot);
-  document.addEventListener('mousemove', (e) => { dot.style.left = e.clientX + 'px'; dot.style.top = e.clientY + 'px'; }, true);
-  document.addEventListener('mousedown', () => { dot.style.transform = 'translate(-50%,-50%) scale(0.6)'; }, true);
-  document.addEventListener('mouseup', () => { dot.style.transform = 'translate(-50%,-50%)'; }, true);
+  // A normal arrow pointer (headless browsers draw none), tip exactly at the mouse position, and a soft ring on clicks.
+  const arrow = document.createElement('div');
+  arrow.innerHTML = '<svg width="22" height="30" viewBox="0 0 22 30" xmlns="http://www.w3.org/2000/svg">'
+    + '<path d="M2 2 L2 24 L7.5 18.8 L11.4 27.4 L15 25.8 L11.2 17.4 L18.6 17.4 Z" fill="#fff" stroke="#111" '
+    + 'stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  Object.assign(arrow.style, {position: 'fixed', left: '-40px', top: '-40px', width: '22px', height: '30px',
+    pointerEvents: 'none', zIndex: 2147483647, transform: 'translate(-2px,-2px)',
+    filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.35))'});
+  document.body.appendChild(arrow);
+  document.addEventListener('mousemove', (e) => { arrow.style.left = e.clientX + 'px'; arrow.style.top = e.clientY + 'px'; }, true);
+  document.addEventListener('mousedown', (e) => {
+    const ring = document.createElement('div');
+    Object.assign(ring.style, {position: 'fixed', left: e.clientX + 'px', top: e.clientY + 'px', width: '28px', height: '28px',
+      borderRadius: '50%', border: '2px solid rgba(79,70,229,0.7)', pointerEvents: 'none', zIndex: 2147483646,
+      transform: 'translate(-50%,-50%) scale(0.4)', opacity: '1', transition: 'transform .35s ease-out, opacity .35s ease-out'});
+    document.body.appendChild(ring);
+    requestAnimationFrame(() => { ring.style.transform = 'translate(-50%,-50%) scale(1.3)'; ring.style.opacity = '0'; });
+    setTimeout(() => ring.remove(), 400);
+  }, true);
 });
 """
 
@@ -91,7 +102,7 @@ def go(name, heading=None):
 
 def search(page, text, view):
     """Explore: find a node, pick its first match, then one of its walks."""
-    box = page.get_by_placeholder("e.g. pkg/scheduler, sidecar, pohly, sig-node")
+    box = page.get_by_placeholder("e.g. pkg/scheduler")
     click(page, box)
     box.fill("")
     box.type(text, delay=60)
@@ -167,6 +178,14 @@ def explore_critical(page):
     scroll(page, 360)
 
 
+def explore_docs(page):
+    scroll(page, -3000, steps=8)
+    search(page, "sig node annual report 2024", "Document")
+    scroll(page, 360)
+    pause(2.0)
+    scroll(page, 360)
+
+
 def memory(page):
     pause(1.0)
     scroll(page, 300)
@@ -210,10 +229,13 @@ SCENES = [
     ("Critical code ranks packages with FalkorDB's PageRank and betweenness algorithms over the import graph, then "
      "counts how many people can approve each one. Code that much of the project depends on, with a single "
      "approver, is a real risk, and the graph shows exactly where it is.", nothing, explore_critical),
+    ("Explore also searches the community's own documents with FalkorDB's full-text index: SIG charters, READMEs, "
+     "annual reports and the DevStats guide. Here is SIG Node's annual report for 2024, linked to the design "
+     "decisions and the people it mentions. People appear only as GitHub handles.", nothing, explore_docs),
     ("Kortex remembers. Every question and answer is stored in FalkorDB, in a separate graph for each user, linked "
      "to the folders, people and decisions it used. The agent recalls earlier chats by topic, and the shared "
      "Kubernetes graph never holds anyone's questions.", go("Memory", "Memory"), memory),
-    ("The Data page shows what the graph holds: about ten thousand nodes and thirty-two thousand relationships, "
+    ("The Data page shows what the graph holds: about ten thousand nodes and thirty-three thousand relationships, "
      "the schema as found in the data, and the exact commits it was loaded from. People appear only as public "
      "GitHub handles.", go("Data", "What the graph holds"), data),
     ("Kortex is open source and live on Streamlit, backed by FalkorDB Cloud. Bring your own model key, or explore "

@@ -15,14 +15,15 @@ MODEL = os.getenv("MODEL", "openrouter:openai/gpt-oss-120b")
 FALLBACKS = [m.strip() for m in os.getenv("MODEL_FALLBACKS", "openai/gpt-oss-120b").split(",") if m.strip()]
 
 # provider -> env var holding its API key (Bedrock uses the normal AWS credential chain instead)
-KEY_ENV = {"openrouter": "OPENROUTER_API_KEY", "groq": "GROQ_API_KEY", "openai": "OPENAI_API_KEY", "bedrock_converse": None}
+KEY_ENV = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY",
+           "openai": "OPENAI_API_KEY", "bedrock_converse": None}
 
 # Public deployments: visitors bring their own API key. The server's keys (and its AWS credentials) are never used.
 REQUIRE_USER_KEY = os.getenv("REQUIRE_USER_KEY", "").strip().lower() in ("1", "true", "yes")
 
 # provider -> suggested model id (any tool-calling model works)
-PROVIDERS = {"openrouter": "openai/gpt-oss-120b", "groq": "openai/gpt-oss-120b", "openai": "gpt-5-mini",
-             "bedrock_converse": "us.amazon.nova-pro-v1:0"}
+PROVIDERS = {"openrouter": "openai/gpt-oss-120b", "anthropic": "claude-sonnet-5-5", "groq": "openai/gpt-oss-120b",
+             "openai": "gpt-5-mini", "bedrock_converse": "us.amazon.nova-pro-v1:0"}
 
 
 def providers():
@@ -46,7 +47,8 @@ def split_spec(spec):
 
 def make_model(spec=MODEL, api_key=None):
     """'provider:model' -> chat model. e.g. openrouter:openai/gpt-oss-120b, groq:openai/gpt-oss-120b,
-    openai:gpt-5-mini, bedrock_converse:us.amazon.nova-pro-v1:0. api_key overrides the env var."""
+    anthropic:claude-sonnet-5-5, openai:gpt-5-mini, bedrock_converse:us.amazon.nova-pro-v1:0. api_key overrides the
+    env var."""
     provider, name = split_spec(spec)
     if provider not in KEY_ENV:
         raise ValueError(f"Unsupported provider '{provider}'. Use one of: {', '.join(KEY_ENV)}")
@@ -58,6 +60,9 @@ def make_model(spec=MODEL, api_key=None):
         body = {"usage": {"include": True}, **({"models": [name] + backups} if backups else {})}
         return ChatOpenAI(model=name, api_key=key, base_url="https://openrouter.ai/api/v1", temperature=0,
                           timeout=90, max_retries=2, stream_usage=True, extra_body=body)
+    if provider == "anthropic":  # Claude: the model's own default sampling; answers stay grounded by the prompt rules
+        return init_chat_model(name, model_provider="anthropic", max_tokens=4096, timeout=90, max_retries=2,
+                               **({"api_key": key} if key else {}))
     extra = {"stream_usage": True} if provider == "openai" else {}
     return init_chat_model(name, model_provider=provider, temperature=0, **extra, **({"api_key": key} if key else {}))
 
@@ -94,6 +99,9 @@ ERRORS = [  # (text found in the error, what happened, what to do)
     ("own-key", "Bring your own API key", "This app answers with your key only: open Model in the sidebar, pick a "
                                           "provider and paste its key. It stays in this browser session. Explore, "
                                           "Memory and Data work without one."),
+    ("overloaded", "The model is overloaded", "The provider is busy right now (Anthropic returns 529). Retry in a "
+                                              "minute or pick another model."),
+    ("credit balance", "The account has no credit", "Add credit to the provider account, or use another key."),
     ("429", "The model is rate-limited", "Free OpenRouter models share a busy pool. Retry in a minute, or use a "
                                          "paid model such as `openai/gpt-oss-120b` (well under a cent per question)."),
     ("401", "The API key was rejected", "Paste a valid key in the sidebar under Model, or set it in `.env`."),

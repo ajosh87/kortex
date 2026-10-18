@@ -188,6 +188,89 @@ def parse_sigs():
     return sigs, leads, subs
 
 
+# ---------- community documents: SIG and working-group READMEs, charters, annual reports ----------
+
+DOCS = DATA / "community"
+DOC_GLOBS = ["sig-*/README.md", "sig-*/charter.md", "sig-*/annual-report-*.md", "wg-*/README.md", "wg-*/charter.md",
+             "wg-*/annual-report-*.md", "sig-contributor-experience/devstats/README.md"]
+DOC_CHARS = 12000  # text kept per document (searchable and readable by the agent)
+LEAD_LINE = re.compile(r"^\s*[*-]\s*(.+?)\s*\(\*\*\[@([\w-]+)\]\([^)]*\)\*\*\).*$", re.M)  # "* Name (**[@handle](url)**), Employer"
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+WORD = r"[A-ZÀ-ÖØ-Þ][^\W\d_A-ZÀ-ÖØ-Þ]+"  # a capitalised word, accents included (CamelCase like DevStats does not match)
+PROPER = re.compile(rf"(?<![\w@/.-])({WORD}(?:[ -]{WORD}){{0,2}})(?![\w/])")
+KEEP = {"january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november",
+        "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "monday",
+        "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "pacific", "eastern", "central", "european",
+        "europe", "america", "north", "south", "asia", "english", "spanish", "chinese", "japanese", "china", "india",
+        "japan", "london", "paris", "amsterdam", "chicago", "atlanta", "salt", "lake", "detroit", "valencia", "shanghai",
+        "hong", "kong", "tokyo", "summit", "contributor", "summer"}  # calendar words and places: not people
+KEP_REF = re.compile(r"(?:KEP[- #]?|/keps/sig-[\w-]+/|enhancements/issues/)(\d{2,5})\b")
+AT_HANDLE = re.compile(r"(?<![\w.])@([A-Za-z0-9][A-Za-z0-9-]{1,38})\b")
+
+
+def lead_names():
+    """Name -> GitHub handle for everyone named in sigs.yaml leadership and in README leadership lists. Used only to
+    replace those names with handles in document text; the names themselves are never stored."""
+    y = read_yaml(SIGS)
+    names = {}
+    for group in ("sigs", "workinggroups", "committees", "usergroups"):
+        for g in y.get(group, []) or []:
+            for people in (g.get("leadership") or {}).values():
+                for p in people or []:
+                    if p.get("name") and handle(p.get("github")):
+                        names[p["name"].strip()] = handle(p["github"])
+    for path in DOCS.glob("*/README.md"):
+        names.update({n.strip(): h.lower() for n, h in LEAD_LINE.findall(path.read_text(encoding="utf-8", errors="ignore"))})
+    return names
+
+
+def scrub(text, names, lowercase_words):
+    """Document text with people reduced to GitHub handles: leadership lines keep only the handle (no name, no
+    employer), known names become @handle, e-mail addresses go, and any run of capitalised words with a word that
+    never appears in lower case in the documents (names, employers, places) becomes [name]. A lone capitalised word
+    that starts a sentence stays ("Additionally"), unless it is a known person's first name. Errs towards removing
+    too much."""
+    text = LEAD_LINE.sub(lambda m: f"- @{m.group(2).lower()}", text)
+    text = EMAIL.sub("[email]", text)
+    for name in sorted(names, key=len, reverse=True):
+        text = text.replace(name, f"@{names[name]}")
+    first_names = {n.split()[0].lower() for n in names}
+
+    def proper(m):
+        words = [w.lower() for w in re.split(r"[ -]", m.group(1))]
+        if all(w in lowercase_words or w in KEEP or w.removesuffix("s") in KEEP for w in words):
+            return m.group(0)  # ordinary words, capitalised ("Project Health", "March")
+        starts_sentence = re.search(r"(^|[.!?:#*|>(\[-])\s*$", m.string[max(0, m.start() - 4):m.start()]) or m.start() == 0
+        if len(words) == 1 and starts_sentence and words[0] not in first_names:
+            return m.group(0)
+        return "[name]"
+    return PROPER.sub(proper, text)
+
+
+def parse_docs():
+    """One row per community document: path, title, kind, year, group folder, scrubbed text, and the GitHub handles
+    and KEP numbers it mentions."""
+    paths = sorted({p for g in DOC_GLOBS for p in DOCS.glob(g)})
+    raw = {p: p.read_text(encoding="utf-8", errors="ignore") for p in paths}
+    vocabulary = [*raw.values(), *(f.read_text(encoding="utf-8", errors="ignore") for f in KEPS.glob("*/*/README.md"))]
+    prose = (re.sub(r"@[\w-]+|https?://\S+|\]\([^)]*\)", " ", t) for t in vocabulary)  # handles and links hold names
+    lowercase_words = {w for t in prose for w in re.findall(r"\b[^\W\d_]+\b", t) if w.islower()}
+    names = lead_names()
+    rows = []
+    for p, t in raw.items():
+        rel = p.relative_to(DOCS).as_posix()
+        clean = scrub(t, names, lowercase_words)
+        title = next((line.lstrip("# ").strip() for line in clean.splitlines() if line.startswith("# ")), rel)
+        year = re.search(r"annual-report-(\d{4})", rel)
+        kind = ("Annual report" if year else "Charter" if rel.endswith("charter.md")
+                else "DevStats README" if "devstats" in rel else "README")
+        rows.append({"path": rel, "title": title, "kind": kind, "year": int(year.group(1)) if year else None,
+                     "group": rel.split("/")[0], "text": clean[:DOC_CHARS],
+                     "handles": sorted({h.lower() for h in AT_HANDLE.findall(clean) if is_person(h.lower())}),
+                     "keps": sorted(set(KEP_REF.findall(t)))})
+    return rows
+
+
 # KEP files sometimes misspell SIG names; map the known variants, drop anything that is not a SIG.
 SIG_ALIASES = {"sig-scheduler": "sig-scheduling", "sig-arch": "sig-architecture", "sig-apimachinery": "sig-api-machinery",
                "sig-machinery": "sig-api-machinery", "sig-contribex": "sig-contributor-experience"}
@@ -253,6 +336,7 @@ SCHEMA = [
     "CREATE INDEX FOR (g:FeatureGate) ON (g.name)",
     "CREATE INDEX FOR (r:PR) ON (r.number)",
     "CREATE INDEX FOR (c:Component) ON (c.name)",
+    "CREATE INDEX FOR (d:Doc) ON (d.path)",
 ]
 
 
@@ -338,6 +422,23 @@ def load_decisions(keps, kep_people, kep_links, kep_gates):
         WITH g, r UNWIND r.components AS c MERGE (comp:Component {name: c}) MERGE (g)-[:AFFECTS]->(comp)""", kep_gates)
 
 
+def load_docs(docs):
+    """Community documents (READMEs, charters, annual reports) with full-text search, linked to their SIG and to
+    the people and KEPs they mention (only ones already in the graph)."""
+    try:
+        q("CALL db.idx.fulltext.createNodeIndex('Doc', 'title', 'text')")
+    except ResponseError:
+        pass  # index already exists
+    write("""UNWIND $rows AS r
+        MERGE (d:Doc {path: r.path}) SET d.title = r.title, d.kind = r.kind, d.year = r.year, d.group = r.group, d.text = r.text
+        WITH d, r OPTIONAL MATCH (s:SIG {name: r.group})
+        FOREACH (_ IN CASE WHEN s IS NULL THEN [] ELSE [1] END | MERGE (d)-[:ABOUT]->(s))""", docs)
+    write("""UNWIND $rows AS r
+        MATCH (d:Doc {path: r.path}) UNWIND r.handles AS h MATCH (p:Person {handle: h}) MERGE (d)-[:MENTIONS]->(p)""", docs)
+    write("""UNWIND $rows AS r
+        MATCH (d:Doc {path: r.path}) UNWIND r.keps AS n MATCH (k:KEP {number: n}) MERGE (d)-[:MENTIONS]->(k)""", docs)
+
+
 def record_provenance(prs):
     """What was loaded, from which commits and history window, with counts and the schema (shown in the app)."""
     counts = q("MATCH (n) WHERE NOT n:Meta RETURN labels(n)[0] AS kind, count(*) AS n ORDER BY n DESC")
@@ -368,6 +469,7 @@ def main():
     prs = parse_prs()
     sigs, leads, subs = parse_sigs()
     keps, kep_people, kep_links, kep_gates = parse_keps()
+    docs = parse_docs()
     known = {s["name"] for s in sigs}
     keps = [{**k, "owning_sig": canonical_sig(k["owning_sig"], known),
              "sigs": sorted({c for c in (canonical_sig(x, known) for x in k["sigs"]) if c})} for k in keps]
@@ -382,6 +484,7 @@ def main():
     load_code(imports, code_gates)
     load_history(prs)
     load_decisions(keps, kep_people, kep_links, kep_gates)
+    load_docs(docs)
     record_provenance(prs)
     print("  snapshot:", snapshot.export())  # what the app restores from if the database ever loses the graph
     print("done:", q("MATCH (n) RETURN count(n) AS nodes")[0], q("MATCH ()-[r]->() RETURN count(r) AS edges")[0])

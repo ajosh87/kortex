@@ -23,7 +23,8 @@ import ui_graph
 
 # Node colours by kind: muted tints that sit together with the logo's indigo and yellow, dark text on all of them.
 SOFT = {"Person": "#BFE3FB", "Dir": "#FFE8A3", "KEP": "#CDD0FB", "SIG": "#C3EED2", "Team": "#BDEDE6",
-        "FeatureGate": "#F9CAD7", "PR": "#DDE1EA", "Component": "#FDD9B5", "Subproject": "#E0DAFB", "Turn": "#4F46E5"}
+        "FeatureGate": "#F9CAD7", "PR": "#DDE1EA", "Component": "#FDD9B5", "Subproject": "#E0DAFB", "Turn": "#4F46E5",
+        "Doc": "#E9F5C9"}
 FONT = {"Turn": "#ffffff"}  # dark fills get light text
 
 # Icon per tool in the step timeline.
@@ -32,7 +33,7 @@ ICON = {"search_graph": "search", "who_owns": "approval", "design_constraints": 
         "single_points_of_failure": "person_alert", "person_profile": "person", "how_connected": "conversion_path",
         "run_cypher": "terminal", "write_review_plan": "edit_document", "recall_memory": "psychology",
         "recent_changes": "update", "critical_code": "local_fire_department", "decision_to_approvers": "route",
-        "best_reviewers": "rate_review"}
+        "best_reviewers": "rate_review", "search_docs": "manage_search", "read_doc": "article"}
 
 PHASE = {"thinking": "Model is choosing the next step", "tools": "Querying the graph", "writing": "Writing the answer"}
 REDRAW = 0.25  # seconds between redraws of an answer that is still streaming

@@ -4,8 +4,11 @@ altair==6.3.0
     # via streamlit
 annotated-types==0.8.0
     # via pydantic
+anthropic==1.15.0
+    # via langchain-anthropic
 anyio==4.15.1
     # via
+    #   anthropic
     #   groq
     #   httpx
     #   httpx2
@@ -39,6 +42,8 @@ distro==1.9.0
     # via
     #   groq
     #   langsmith
+docstring-parser==0.18.0
+    # via anthropic
 falkordb==1.8.0
     # via kortex
 groq==0.37.1
@@ -59,6 +64,7 @@ httpx==0.28.1
     #   langgraph-sdk
 httpx2==2.13.1
     # via
+    #   anthropic
     #   langsmith
     #   openai
 httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
@@ -76,7 +82,9 @@ jinja2==3.1.6
     #   altair
     #   pydeck
 jiter==0.17.0
-    # via openai
+    # via
+    #   anthropic
+    #   openai
 jmespath==1.1.0
     # via
     #   boto3
@@ -91,11 +99,14 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 langchain==1.4.6
     # via kortex
+langchain-anthropic==1.7.6
+    # via kortex
 langchain-aws==1.9.0
     # via kortex
 langchain-core==1.6.12
     # via
     #   langchain
+    #   langchain-anthropic
     #   langchain-aws
     #   langchain-groq
     #   langchain-openai
@@ -137,6 +148,8 @@ numpy==2.5.4
     #   streamlit
 openai==3.33.0
     # via langchain-openai
+opentelemetry-api==1.45.1
+    # via anthropic
 orjson==3.13.0
     # via
     #   langgraph-sdk
@@ -159,8 +172,10 @@ pyarrow==26.0.0
     # via streamlit
 pydantic==2.14.1
     # via
+    #   anthropic
     #   groq
     #   langchain
+    #   langchain-anthropic
     #   langchain-aws
     #   langchain-core
     #   langgraph
@@ -209,6 +224,7 @@ six==1.17.0
     # via python-dateutil
 sniffio==1.3.1
     # via
+    #   anthropic
     #   groq
     #   langsmith
     #   openai
@@ -227,6 +243,7 @@ truststore==0.10.5 ; sys_platform != 'emscripten'
 typing-extensions==4.16.0
     # via
     #   altair
+    #   anthropic
     #   anyio
     #   groq
     #   httpx2
@@ -234,6 +251,7 @@ typing-extensions==4.16.0
     #   langchain-protocol
     #   langsmith
     #   openai
+    #   opentelemetry-api
     #   pydantic
     #   pydantic-core
     #   referencing

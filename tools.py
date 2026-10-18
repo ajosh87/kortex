@@ -10,6 +10,7 @@ The same tools also power the Explore page directly, without an LLM (see ACTIONS
 """
 import functools
 import json
+import re
 import time
 from collections import Counter
 from datetime import date, timedelta
@@ -44,6 +45,8 @@ TITLES = {
     "decision_to_approvers": "Tracing KEP-{number} to the code it changes and who must approve it",
     "best_reviewers": "Finding who can approve `{path}` and changed it recently",
     "recall_memory": "Recalling earlier conversations about “{about}”",
+    "search_docs": "Searching community documents for “{text}”",
+    "read_doc": "Reading `{path}`",
 }
 DEFAULTS = {"about": "anything", "since": "30 days ago", "scope": "pkg"}
 
@@ -500,6 +503,51 @@ def best_reviewers(path: str):
                 tables=[table("Reviewers, best first", rows, {"Person": "Person"})])
 
 
+@graph_tool
+def search_docs(text: str):
+    """Full-text search of the Kubernetes community documents: SIG and working-group READMEs, charters, annual
+    reports, and the DevStats README. Best match first, with an excerpt. Use it for a group's mission, scope,
+    meetings, subprojects, annual-report highlights or goals, and for DevStats; then read_doc the best match."""
+    rows = Q.search_docs(text, 8)
+    refs = [node("Doc", r["path"], title=r["title"]) for r in rows]
+    edges = [(d, "about", node("SIG", r["sig"])) for d, r in zip(refs, rows) if r["sig"]]
+    return step(rows, f"{len(rows)} document{'s' if len(rows) != 1 else ''} match" + (f"; best: `{rows[0]['path']}`" if rows else ""),
+                edges, refs, tables=[table("Documents", [{"Document": link("Doc", r["path"]), "Kind": r["kind"], "Year": r["year"] or "",
+                                                          "Excerpt": r["snippet"]} for r in rows], {"Document": "Doc"})])
+
+
+DOC_MODEL_CHARS = 8000  # of a document's text, what the model reads (it must fit in MODEL_CHARS with the rest)
+
+
+@graph_tool
+def read_doc(path: str):
+    """Read one community document by its path from search_docs (e.g. 'sig-node/annual-report-2024.md'): its
+    text, its SIG, and the KEPs and people (GitHub handles) it mentions. People appear only as handles; other
+    names were replaced by [name] when the documents were loaded."""
+    rows = Q.doc(path)
+    if not rows:
+        return step([], f"`{path}` is not in the graph (search_docs gives the paths)")
+    r = rows[0]
+    d = node("Doc", r["path"], title=r["title"])
+    keps = [k for k in r["keps"] if k.get("kep")]
+    text = r["text"] or ""
+    edges = [(d, "about", node("SIG", s)) for s in r["sigs"]]
+    edges += [(d, "mentions", node("KEP", k["kep"], title=k["title"])) for k in keps[:10]]
+    edges += [(d, "mentions", node("Person", p)) for p in r["people"][:10]]
+    cut = len(text) > DOC_MODEL_CHARS
+    return step({"path": r["path"], "title": r["title"], "kind": r["kind"], "year": r["year"], "sigs": r["sigs"],
+                 "text": text[:DOC_MODEL_CHARS] + (f" … [cut: the first {DOC_MODEL_CHARS:,} of {len(text):,} characters]" if cut else ""),
+                 "keps_mentioned": [k["kep"] for k in keps], "people_mentioned": r["people"]},
+                f"{r['kind']} “{r['title']}”: {len(text):,} characters{' (the model reads the first ' + format(DOC_MODEL_CHARS, ',') + ')' if cut else ''}"
+                f", mentions {len(keps)} KEPs and {len(r['people'])} people in the graph", edges,
+                [d] + [node("KEP", k["kep"], title=k["title"]) for k in keps]
+                + [node("Person", h.lower()) for h in {*r["people"], *re.findall(r"(?<![\w.])@([A-Za-z0-9][A-Za-z0-9-]+)", text)}],
+                tables=[table("Document", _facts(("Title", r["title"]), ("Kind", r["kind"]), ("Year", str(r["year"] or "")),
+                                                 ("SIG", _join(r["sigs"])), ("KEPs mentioned", _join(f"KEP-{k['kep']}" for k in keps)),
+                                                 ("People mentioned", _join(r["people"], "@")), ("Source", link("Doc", r["path"])))),
+                        table("Text", [{"Opening": Q.snippet(text, "", 900)}])])
+
+
 @tool(description="Read-only Cypher (FalkorDB) ONLY for questions no other tool covers. Approver and reviewer lists "
                   "contain Teams as well as People: expand (:Person)-[:MEMBER_OF]->(:Team) before counting people, and "
                   "remember ownership is inherited from parent folders. Conversation memory is not in this graph "
@@ -557,7 +605,7 @@ def write_review_plan(path: str, change_summary: str):
 def all_tools():
     return [search_graph, who_owns, best_reviewers, design_constraints, decision_to_approvers, blast_radius, critical_code,
             find_experts, recent_changes, kep_details, decision_trail, single_points_of_failure, person_profile,
-            how_connected, run_cypher, write_review_plan]
+            how_connected, search_docs, read_doc, run_cypher, write_review_plan]
 
 
 # ---------------- node profiles: what the detail panel shows when a graph node is clicked ----------------
@@ -629,6 +677,15 @@ def _card(kind, key, user=None):
         r = (Q.component_profile(key) or [None])[0]
         return step({}, f"Binary {key}: lives in {len(r['dirs'])} folders, affected by {r['gates']} feature gates",
                     tables=[table("About", _facts(("Code", _join(r["dirs"]))))])
+    if kind == "Doc":
+        r = (Q.doc(key) or [None])[0]
+        if not r:
+            return step({}, f"`{key}` is not in the graph")
+        keps = [k for k in r["keps"] if k.get("kep")]
+        return step({}, f"{r['kind']} “{r['title']}”",
+                    tables=[table("About", _facts(("Opening", Q.snippet(r["text"] or "", "", 600)), ("SIG", _join(r["sigs"])),
+                                                  ("KEPs mentioned", _join(f"KEP-{k['kep']}" for k in keps)),
+                                                  ("People mentioned", _join(r["people"], "@"))))])
     if kind == "Turn":
         session, _, n = key.rpartition(":")
         r = (MG.turn_profile(user, session, n) or [None])[0] if user else None
@@ -687,14 +744,19 @@ ACTIONS = {
     "SIG": [("single_points_of_failure", "Bus factor", ":material/person_alert:",
              "The SIG's folders whose nearest OWNERS file names the fewest people, and who approves the most folders.",
              lambda k: {"sig": k})],
+    "Doc": [("read_doc", "Document", ":material/article:",
+             "Reads the document (people appear only as GitHub handles) and follows its links: the SIG it belongs to, "
+             "and the KEPs and people it mentions that are in the graph.", lambda k: {"path": k})],
 }
 _BY_NAME = {t.name: t for t in all_tools()}
 
 
 def explore_search(text, limit=20):
-    """Search limited to things the Explore page has views for, as typed node refs."""
-    rows = [r for r in Q.search(text, 60) if r["kind"] in ACTIONS][:limit]
-    return [node(r["kind"], r["key"], title=r["label"] if r["label"] != r["key"] else None) for r in rows]
+    """Search limited to things the Explore page has views for, as typed node refs: names first (folders, KEPs,
+    people, SIGs), then community documents by full text."""
+    docs = [node("Doc", r["path"], title=r["title"]) for r in Q.search_docs(text, 8)]
+    rows = [r for r in Q.search(text, 60) if r["kind"] in ACTIONS][:limit - len(docs)]
+    return [node(r["kind"], r["key"], title=r["label"] if r["label"] != r["key"] else None) for r in rows] + docs
 
 
 def actions_for(kind):
