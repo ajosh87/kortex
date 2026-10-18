@@ -51,9 +51,8 @@ def open_chat(session):
 
 
 with st.sidebar:
-    if "user" not in st.session_state:  # the name field sits lower down, but the chat list needs it first
-        st.session_state.user = "demo"
-    chats = MG.sessions(st.session_state.user, st.session_state.session, limit=10)
+    user = st.session_state.get("user", "demo")  # the name field sits lower down, but the chat list needs it first
+    chats = MG.sessions(user, st.session_state.session, limit=10)
     ui.section("Chats", "forum")
     if not chats:
         st.caption("Your chats appear here once you ask something.")
@@ -68,7 +67,7 @@ with st.sidebar:
                 st.switch_page("app_pages/ask.py")
 
     ui.section("Settings", "tune")
-    st.text_input("Your name", key="user", help="Chats and memory are kept per name, across sessions.")
+    st.text_input("Your name", value="demo", key="user", help="Chats and memory are kept per name, across sessions.")
     default_provider, default_model = M.split_spec(M.MODEL)
     providers = M.providers()
     with st.expander("Model", icon=":material/tune:", expanded=M.needs_key(st.session_state.get("api_key"))):
