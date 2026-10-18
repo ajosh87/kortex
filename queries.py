@@ -314,6 +314,11 @@ def search(text, limit=10):
     """Find folders, KEPs, feature gates, SIGs or people by a name fragment. '@handle' finds the person, and
     'KEP-2837', 'KEP 2837' or '2837' finds the KEP by number."""
     t = text.strip().lower().lstrip("@")
+    if text.strip().startswith("@"):  # a handle: people only, the exact one first, then those starting with it
+        return q("""
+            MATCH (p:Person) WHERE p.handle CONTAINS $t
+            RETURN 'Person' AS kind, p.handle AS key, p.handle AS label
+            ORDER BY p.handle <> $t, NOT p.handle STARTS WITH $t, size(p.handle) LIMIT $limit""", {"t": t, "limit": limit})
     number = re.fullmatch(r"(?:kep)?[\s#-]*(\d{1,5})", t)
     return q("""
         CALL {
@@ -349,7 +354,7 @@ def _names():
 
 def close_names(text, limit=5):
     """Names in the graph closest to one that matches nothing ('thokin' -> thockin), best first."""
-    kinds = {r["key"]: r["kind"] for r in _names()}
+    kinds = {r["key"]: r["kind"] for r in _names() if r["kind"] == "Person" or not text.strip().startswith("@")}
     keys = difflib.get_close_matches(text.strip().lower().lstrip("@"), list(kinds), n=limit, cutoff=0.75)
     return [{"kind": kinds[k], "key": k} for k in keys]
 

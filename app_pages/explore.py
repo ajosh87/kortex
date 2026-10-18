@@ -29,7 +29,8 @@ with st.container(horizontal=True, vertical_alignment="bottom", gap="medium"):
     text = st.text_input("1 · Find a folder, KEP, person, SIG or document", value="eviction", type="search", live="300ms",
                          placeholder="e.g. pkg/scheduler, sidecar, pohly, sig-node, annual report")
     matches, search_queries = search(text.strip()) if len(text.strip()) >= 2 else ([], [])
-    choice = st.selectbox("Match", matches, index=0 if matches else None, key="explore-match",
+    # Keyed by the search text: a new search starts on its first match (a single key would keep an earlier empty pick)
+    choice = st.selectbox("Match", matches, index=0 if matches else None, key=f"explore-match-{text.strip().lower()}",
                           format_func=lambda n: f"{n['kind_label']} · {n['label']}" + (f" · {n['title']}" if n.get("title") else "")
                           + (" · closest name" if n.get("close") else ""),
                           placeholder="No matches" if text.strip() else "Type to search")
