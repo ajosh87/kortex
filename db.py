@@ -25,6 +25,8 @@ def client():
         port=int(os.getenv("FALKORDB_PORT", "6379")),
         username=os.getenv("FALKORDB_USERNAME") or None,
         password=os.getenv("FALKORDB_PASSWORD") or None,
+        ssl=os.getenv("FALKORDB_TLS", "").strip().lower() in ("1", "true", "yes"),  # for cloud instances that need TLS
+        socket_keepalive=True, health_check_interval=30,  # an app idle for a while reconnects instead of failing
     )
 
 
@@ -62,7 +64,7 @@ def mq(name, cypher, params=None):
 
 def exists(name):
     """Whether a graph exists (memory graphs are created by a user's first question, not by reading them)."""
-    return bool(client().connection.exists(name))
+    return name in client().list_graphs()  # GRAPH.LIST: allowed for cloud users limited to graph commands
 
 
 def traced(fn, *args, **kwargs):

@@ -7,3 +7,4 @@ __pycache__/
 backups/
 .ruff_cache/
 .claude/
+.env.cloud
