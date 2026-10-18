@@ -1,8 +1,9 @@
 """Interactive graph: a small Streamlit custom component (v2) around Cytoscape.js.
 
 Zoom (Ctrl/Cmd + scroll, or the buttons), pan and drag in the browser; a plain scroll keeps scrolling the page.
-Clicking a node sends its id back to Python, which shows the node's profile in the app. Only presentation lives
-here: nodes and edges come from the pipeline as they are.
+The layout menu redraws the same graph another way (force, tree, circle, rings, grid), and the full-screen button
+opens it over the whole window (Esc closes it). Clicking a node sends its id back to Python, which shows the
+node's profile in the app. Only presentation lives here: nodes and edges come from the pipeline as they are.
 """
 import streamlit as st
 
@@ -13,7 +14,9 @@ _HTML = """<div class="kx">
     <div class="kx-graph"></div>
     <div class="kx-loading"><span class="kx-spin"></span>Drawing the graph…</div>
     <div class="kx-tools">
+      <select class="kx-layout" title="Draw the same graph another way"></select>
       <button data-zoom="in" title="Zoom in">+</button><button data-zoom="out" title="Zoom out">−</button><button data-zoom="fit" title="Show everything">⤢</button>
+      <button class="kx-full-btn" title="Full screen">⛶</button>
     </div>
   </div>
   <div class="kx-hint"></div>
@@ -28,10 +31,15 @@ _CSS = """
 .kx-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(79,70,229,0.25);
   border-top-color: #4F46E5; animation: kx-spin 0.8s linear infinite; }
 @keyframes kx-spin { to { transform: rotate(360deg); } }
-.kx-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
-.kx-tools button { width: 28px; height: 28px; font: 600 15px/1 sans-serif; cursor: pointer; color: #111;
-  background: #fff; border: 1.5px solid #111; border-radius: 4px; }
-.kx-tools button:hover { background: #FFDE59; }
+.kx-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; z-index: 2; }
+.kx-tools button, .kx-tools select { height: 28px; font: 500 14px/1 Inter, sans-serif; cursor: pointer;
+  color: var(--kx-text); background: var(--kx-surface); border: 1px solid var(--kx-line); border-radius: 8px; }
+.kx-tools button { width: 28px; padding: 0; }
+.kx-tools select { padding: 0 6px; font-size: 12px; }
+.kx-tools button:hover, .kx-tools select:hover { background: var(--kx-tint); }
+.kx-full { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 1000000; background: var(--kx-bg); padding: 14px 18px; box-sizing: border-box;
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,0.45); }
+.kx-full .kx-graph { height: calc(100vh - 64px) !important; }
 .kx-hint { font-size: 0.8rem; opacity: 0.7; padding-top: 0.25rem; color: var(--st-text-color); line-height: 1.35; }
 """
 
@@ -43,15 +51,19 @@ function teardown(parentElement) {
   const current = charts.get(parentElement)
   if (!current) return
   document.removeEventListener("scroll", current.onScroll, true)
+  document.removeEventListener("keydown", current.onKey, true)
+  parentElement.querySelector(".kx").classList.remove("kx-full")
   current.cy.destroy()
   charts.delete(parentElement)
 }
 
 function draw(parentElement, data, setTriggerValue) {
+  const root = parentElement.querySelector(".kx")
   const box = parentElement.querySelector(".kx-graph")
   const hint = parentElement.querySelector(".kx-hint")
   box.style.height = data.height + "px"
   hint.textContent = data.hint
+  for (const [k, v] of Object.entries(data.chrome)) root.style.setProperty("--kx-" + k, v)
   const signature = JSON.stringify([data.elements, data.style, data.layout, data.height])
   const current = charts.get(parentElement)
   if (current && current.signature === signature) {  // same graph: only the selection may have changed
@@ -95,12 +107,26 @@ function draw(parentElement, data, setTriggerValue) {
       cy.resize()
       cy.fit(undefined, 16)
     }
+    const menu = parentElement.querySelector(".kx-layout")  // the same graph, drawn another way
+    menu.innerHTML = Object.keys(data.layouts).map((name) => `<option>${name}</option>`).join("")
+    const fit = () => { cy.fit(undefined, 24); if (cy.zoom() > 1.4) { cy.zoom(1.4); cy.center() } }  // small graphs stay readable, not huge
+    menu.onchange = () => { cy.layout(data.layouts[menu.value] || data.layout).run(); fit() }
+    const fullBtn = parentElement.querySelector(".kx-full-btn")
+    const setFull = (on) => {
+      root.classList.toggle("kx-full", on)
+      fullBtn.textContent = on ? "✕" : "⛶"
+      fullBtn.title = on ? "Close full screen (Esc)" : "Full screen"
+      requestAnimationFrame(() => { cy.resize(); fit() })
+    }
+    fullBtn.onclick = () => setFull(!root.classList.contains("kx-full"))
+    const onKey = (e) => { if (e.key === "Escape" && root.classList.contains("kx-full")) setFull(false) }
+    document.addEventListener("keydown", onKey, true)
     cy.on("dbltap", (evt) => { if (evt.target === cy) cy.fit(undefined, 16) })
     cy.on("tap", "node", (evt) => setTriggerValue("selected", evt.target.id()))
     cy.on("mouseover", "node", (evt) => { box.style.cursor = "pointer"; hint.textContent = evt.target.data("tip") })
     cy.on("mouseout", "node", () => { box.style.cursor = "grab"; hint.textContent = data.hint })
     if (data.selected) cy.$id(data.selected).select()
-    charts.set(parentElement, { cy, signature, onScroll })
+    charts.set(parentElement, { cy, signature, onScroll, onKey })
     loading.style.display = "none"
   }).catch(() => { loading.style.display = "none"; hint.textContent = "The interactive graph could not load (the graph library needs internet access)." })
 }
@@ -169,8 +195,21 @@ def layout(name, n=30):
             "gravity": 0.3, "componentSpacing": 80, "numIter": 2500}
 
 
-def show(graph, key, *, colors, fonts, background, accent="#4F46E5", layout_name="tree", edge_labels=True):
-    """Draw an interactive graph. Returns the id of the node the user last clicked (kept across reruns)."""
+# Other ways to draw the same nodes and edges, offered in the graph's layout menu ("Auto" is the default pick).
+LAYOUTS = {
+    "Force": {"name": "cose", "animate": False, "padding": 16, "nodeDimensionsIncludeLabels": True, "idealEdgeLength": 120,
+              "nodeRepulsion": 400000, "nodeOverlap": 60, "gravity": 0.3, "componentSpacing": 80, "numIter": 2500},
+    "Tree": {"name": "breadthfirst", "directed": True, "spacingFactor": 1.15, "padding": 16, "animate": False,
+             "nodeDimensionsIncludeLabels": True},
+    "Circle": {"name": "circle", "padding": 16, "animate": False, "nodeDimensionsIncludeLabels": True},
+    "Rings": {"name": "concentric", "minNodeSpacing": 18, "padding": 16, "animate": False},  # busiest nodes in the middle
+    "Grid": {"name": "grid", "padding": 16, "animate": False, "avoidOverlap": True, "nodeDimensionsIncludeLabels": True},
+}
+
+
+def show(graph, key, *, colors, fonts, background, chrome, accent="#4F46E5", layout_name="tree", edge_labels=True):
+    """Draw an interactive graph. Returns the id of the node the user last clicked (kept across reruns).
+    `chrome` colours the buttons and the full-screen backdrop: {text, surface, line, tint}."""
     pick_key = f"{key}-pick"
 
     def picked():
@@ -182,5 +221,7 @@ def show(graph, key, *, colors, fonts, background, accent="#4F46E5", layout_name
     _GRAPH(key=key, on_selected_change=picked, data={
         "elements": elements(graph, colors, fonts), "style": stylesheet(background, edge_labels, accent),
         "layout": layout(layout_name, len(graph["nodes"])), "height": height, "selected": st.session_state.get(pick_key), "min_zoom": 0.8,
-        "hint": "Click a node for its details · drag to move · Ctrl + scroll or the buttons to zoom."})
+        "layouts": {"Auto": layout(layout_name, len(graph["nodes"])), **LAYOUTS}, "chrome": {**chrome, "bg": background},
+        "hint": "Click a node for its details · drag to move · Ctrl + scroll or the buttons to zoom · "
+                "the menu draws it another way · ⛶ opens it full screen."})
     return st.session_state.get(pick_key)

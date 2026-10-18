@@ -331,7 +331,9 @@ def graph_view(graph, key=None, caption=None, rankdir="LR", layout="dot", edge_l
         st.graphviz_chart(dot(graph, rankdir, layout, edge_labels), width="content", alt="Graph of the nodes and relationships used")
         st.caption(more + (caption or "Click a node to open its source page."))
         return
-    picked = ui_graph.show(graph, key, colors=SOFT, fonts=FONT, background=paper(), accent=tokens()["accent"],
+    t = tokens()
+    picked = ui_graph.show(graph, key, colors=SOFT, fonts=FONT, background=paper(), accent=t["accent"],
+                           chrome={"text": t["log"], "surface": t["surface"], "line": t["line"], "tint": t["tint"]},
                            layout_name="radial" if layout == "neato" else "tree", edge_labels=edge_labels)
     if more or caption:
         st.caption(more + (caption or ""))

@@ -176,7 +176,9 @@ Data it shows the queries behind the page. It is open by default; on narrow scre
 **Interactive graphs.** Graphs are drawn with Cytoscape.js in a small Streamlit custom component (`ui_graph.py`):
 drag, Ctrl + scroll or the buttons to zoom, and click a node to see its profile in the app (approvers, owning
 SIG, design decisions, importers for a folder; teams, folders and KEPs for a person; and so on), read from the
-graph by `tools.node_card()`. A plain scroll keeps scrolling the page.
+graph by `tools.node_card()`. A plain scroll keeps scrolling the page. The layout menu redraws the same graph
+another way (force, tree, circle, rings with the busiest nodes in the middle, grid), and ⛶ opens it full screen
+over the window (Esc closes it).
 
 **Look and feel.** One calm look built from the logo's colours: neutral surfaces with 1 px hairlines, rounded
 corners on one scale (8 px controls, 12 px cards and the composer), no hard shadows, the logo's indigo for actions
