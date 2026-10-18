@@ -288,13 +288,18 @@ def terminal_css():
 {tags}
 .st-key-console-log summary [data-testid="stIconMaterial"] {{ color: #8B949E !important; }}
 .st-key-console-log [data-testid="stCode"] pre {{ background: #161B22 !important; border: 1px solid #30363D !important; }}
-.st-key-console-head {{ position: relative; background: #161B22; margin: -1rem -1rem 0 -1rem; padding: 0.55rem 0.8rem 0.5rem 4.4rem !important;
-  border-bottom: 1px solid #30363D !important; }}
+.st-key-console-head {{ position: relative; background: #161B22; margin: -0.9rem -0.9rem 0 -0.9rem !important;
+  width: calc(100% + 1.8rem) !important; box-sizing: border-box; padding: 0.6rem 0.75rem 0.55rem 4.4rem !important;
+  border-bottom: 1px solid #30363D !important; }}  /* the bar runs from edge to edge of the panel */
 .st-key-console-head::before {{ content: ""; position: absolute; left: 1rem; top: 0.95rem; width: 11px; height: 11px; border-radius: 50%;
   background: #FF5F57; box-shadow: 17px 0 0 #FEBC2E, 34px 0 0 #28C840; }}
 .st-key-console-head p {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; font-size: 0.78rem !important;
   font-weight: 500 !important; color: #C9D1D9 !important; letter-spacing: 0 !important; }}
-.st-key-console-head [data-testid="stCaptionContainer"] p {{ font-size: 0.68rem !important; color: #6E7681 !important; }}
+.st-key-console-head [data-testid="stCaptionContainer"] p {{ font-size: 0.68rem !important; color: #6E7681 !important;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.1rem !important; }}
+.st-key-console-head > div:first-child {{ min-width: 0; }}  /* lets the subtitle shorten instead of wrapping */
+.st-key-console-log {{ padding-top: 0.45rem; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }}  /* lines fade as they scroll under the bar */
 .st-key-console-empty p {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; font-size: 0.76rem !important; color: #7EE787 !important; }}
 div[class*="st-key-log-"] p {{ padding-left: 1.6em; text-indent: -1.6em; }}  /* wrapped lines sit under the text, not the time */
 div[class*="st-key-log-"] p > * {{ text-indent: 0; }}  /* the indent is inherited: the time and tag keep their place */
@@ -575,7 +580,7 @@ def console():
             with st.container(key="console-head", horizontal=True, vertical_alignment="top", gap="small"):
                 with st.container(gap=None):
                     st.markdown("kortex@falkordb: ~/console")
-                    st.caption("model calls · tool calls · every Cypher query, as they run")
+                    st.caption("live · model · tools · Cypher")
                 st.button("", icon=":material/close:", key="console-close", type="tertiary", help="Minimize the console",
                           on_click=_show_console, args=(False,))
             st.session_state["_console"] = st.container(height=400, autoscroll=True, key="console-log", gap=None, border=False)
