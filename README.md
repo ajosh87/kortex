@@ -246,17 +246,26 @@ plain decorated functions, one script per page. No classes.
 | `app_pages/` | `ask.py`, `explore.py`, `memory.py`, `data.py`: one script per page |
 | `ui.py` | Shared rendering: step timeline, graphs, node details, tables with link columns, badges, the console |
 | `ui_graph.py` | The interactive graph: a Streamlit custom component (v2) around Cytoscape.js |
+| `snapshot.py`, `snapshot/` | The Kubernetes graph and the demo chats as compressed JSON, written by `ingest.py`; restored when missing |
+| `.github/workflows/keepalive.yml` | Every 12 hours: keep the FalkorDB Cloud instance in use, restore it if it lost its data |
 | `.streamlit/config.toml` | Light and dark theme; switch in the app's Settings menu |
 
 ## Setup (local)
 
-Requires Docker, [uv](https://docs.astral.sh/uv/) and git.
+Requires Docker and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 docker run -d --name falkordb -p 127.0.0.1:6379:6379 -p 127.0.0.1:3000:3000 -e REDIS_ARGS="--appendonly yes" -v falkordb_data:/var/lib/falkordb/data falkordb/falkordb:latest
+cp .env.example .env    # pick a model and add its API key (Explore, Memory and Data need none)
+uv run streamlit run app.py
 ```
 
-Clone the public data (sparse, a few minutes):
+That is all: on its first start the app finds no graph and loads the bundled snapshot (`snapshot/`, the
+Kubernetes graph plus the demo user's chats) in about half a minute.
+
+### Rebuilding the graph from the source repositories
+
+To load fresh data instead of the snapshot, clone the public repositories (sparse, a few minutes; needs git):
 
 ```bash
 mkdir data && cd data
@@ -273,15 +282,13 @@ cd ..
 On Windows: run `git config --global core.longpaths true` first (some KEP folder names are long), and on
 Git Bash prefix the `sparse-checkout` commands with `MSYS_NO_PATHCONV=1`.
 
-Load the graph (about 30 seconds) and start the app:
+Then load them (about 30 seconds). This also rewrites the snapshot:
 
 ```bash
-cp .env.example .env    # pick a model and add its API key
 uv run ingest.py
-uv run streamlit run app.py
 ```
 
-Re-run `uv run ingest.py` after `git pull` in `data/` to refresh the graph; memory graphs are not touched.
+Re-run it after `git pull` in `data/` to refresh the graph; memory graphs are not touched.
 Explore the raw graph in the FalkorDB Browser at http://localhost:3000.
 
 ### Choosing the LLM
@@ -301,13 +308,29 @@ one fails or is rate-limited. The Explore page needs no model at all.
 
 ## Deployment
 
-1. Create a free instance on [FalkorDB Cloud](https://app.falkordb.cloud/) and put its host, port, username and
-   password in `.env` (`FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_USERNAME`, `FALKORDB_PASSWORD`).
-2. Load the graph into it from your machine: `uv run ingest.py`.
-3. On [Streamlit Community Cloud](https://share.streamlit.io/), deploy this repository with `app.py` as the main
-   file. Dependencies come from `requirements.txt`. Add the same `FALKORDB_*` values and `MODEL` as secrets,
-   and `REQUIRE_USER_KEY = "true"` so visitors answer with their own API key and the deployment never spends
-   yours (no server key is needed then). Without it, add `OPENROUTER_API_KEY` too.
+1. Create a free instance on [FalkorDB Cloud](https://app.falkordb.cloud/). Its endpoint (host and port) is on
+   the instance's Connectivity tab; the user (`falkordb`) and password on its Instance Details tab. The Free tier
+   has no TLS.
+2. On [Streamlit Community Cloud](https://share.streamlit.io/), deploy this repository with `app.py` as the main
+   file and Python 3.12. Add these secrets:
+   ```toml
+   MODEL = "openrouter:openai/gpt-oss-120b"
+   REQUIRE_USER_KEY = "true"      # visitors answer with their own API key; the deployment never spends yours
+   FALKORDB_HOST = "..."
+   FALKORDB_PORT = "..."
+   FALKORDB_USERNAME = "falkordb"
+   FALKORDB_PASSWORD = "..."
+   FALKORDB_TLS = "false"
+   ```
+   On its first start the app loads the snapshot into the instance (about a minute over the network).
+3. Add the same five `FALKORDB_*` values as GitHub repository secrets for the keep-alive job
+   (`.github/workflows/keepalive.yml`).
+
+**Why the keep-alive job.** A Free FalkorDB Cloud instance that is unused for a day is stopped, and deleted after
+7 days, and it keeps no data across restarts. Every 12 hours the job queries the instance, which keeps it in use,
+and restores the graph and the demo chats from the snapshot if they are gone. The app does the same check
+itself (at most every 5 minutes), so a restarted instance heals on the next visit too. Chats under other names
+live only as long as the instance does.
 
 ## Security
 

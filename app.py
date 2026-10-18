@@ -8,14 +8,26 @@ from pathlib import Path
 import streamlit as st
 
 import agent as A
-import models as M
 import memory_graph as MG
+import models as M
+import snapshot
 import ui
 
 HERE = Path(__file__).parent
 st.set_page_config(page_title="Kortex · Kubernetes org brain", page_icon=str(HERE / "assets" / "icon.svg"), layout="wide",
                    initial_sidebar_state="expanded")
 st.logo(str(HERE / "assets" / "logo.svg"), icon_image=str(HERE / "assets" / "icon.svg"), size="large")
+
+@st.cache_resource(ttl=300, show_spinner=False)
+def missing_data():
+    """What the database lacks that the bundled snapshot can restore (checked at most every 5 minutes)."""
+    return snapshot.missing()
+
+
+if missing_data():  # a fresh install, or a free cloud instance that restarted empty
+    with st.spinner(f"Restoring {' and '.join(missing_data())} from the snapshot (first start only, about a minute)…"):
+        snapshot.ensure()
+    missing_data.clear()
 
 if "chats" not in st.session_state:
     st.session_state.chats = {}  # session id -> chat messages, for chats opened in this browser session

@@ -1,0 +1,30 @@
+# FalkorDB Cloud's Free tier stops an instance that is unused for a day (and deletes it after 7), and keeps no data
+# across restarts. Every 12 hours this job queries the instance, which keeps it in use, and restores the
+# Kubernetes graph and the demo chats from snapshot/ if they are missing.
+# Needs repository secrets FALKORDB_HOST, FALKORDB_PORT, FALKORDB_USERNAME, FALKORDB_PASSWORD (and FALKORDB_TLS).
+name: Keep FalkorDB Cloud alive
+
+on:
+  schedule:
+    - cron: "17 */12 * * *"
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Query the instance; restore anything missing
+        env:
+          FALKORDB_HOST: ${{ secrets.FALKORDB_HOST }}
+          FALKORDB_PORT: ${{ secrets.FALKORDB_PORT }}
+          FALKORDB_USERNAME: ${{ secrets.FALKORDB_USERNAME }}
+          FALKORDB_PASSWORD: ${{ secrets.FALKORDB_PASSWORD }}
+          FALKORDB_TLS: ${{ secrets.FALKORDB_TLS }}
+        run: |
+          uv run python snapshot.py
+          uv run python -c "from db import q; print(q('MATCH (n) RETURN count(n) AS nodes')[0])"

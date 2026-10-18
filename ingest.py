@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import yaml
 from redis.exceptions import ResponseError
 
+import snapshot
 from db import q
 
 DATA = Path(__file__).parent / "data"
@@ -382,6 +383,7 @@ def main():
     load_history(prs)
     load_decisions(keps, kep_people, kep_links, kep_gates)
     record_provenance(prs)
+    print("  snapshot:", snapshot.export())  # what the app restores from if the database ever loses the graph
     print("done:", q("MATCH (n) RETURN count(n) AS nodes")[0], q("MATCH ()-[r]->() RETURN count(r) AS edges")[0])
 
 
