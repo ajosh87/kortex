@@ -2,6 +2,7 @@
 
 Each function returns plain rows (list of dicts). The agent's tools are thin wrappers around these.
 """
+import difflib
 import re
 from datetime import datetime
 from functools import cache
@@ -310,10 +311,15 @@ _LINKS = ("AUTHORED|TOUCHES|APPROVER|REVIEWER|MEMBER_OF|KEP_AUTHOR|KEP_REVIEWER|
 
 
 def search(text, limit=10):
-    """Find folders, KEPs, feature gates, SIGs or people by a name fragment."""
-    t = text.lower()
+    """Find folders, KEPs, feature gates, SIGs or people by a name fragment. '@handle' finds the person, and
+    'KEP-2837', 'KEP 2837' or '2837' finds the KEP by number."""
+    t = text.strip().lower().lstrip("@")
+    number = re.fullmatch(r"(?:kep)?[\s#-]*(\d{1,5})", t)
     return q("""
         CALL {
+          MATCH (k:KEP) WHERE k.number = $n
+          RETURN 'KEP' AS kind, k.number AS key, k.title AS label
+          UNION
           MATCH (k:KEP) WHERE toLower(k.title) CONTAINS $t
           RETURN 'KEP' AS kind, k.number AS key, k.title AS label
           UNION
@@ -329,7 +335,23 @@ def search(text, limit=10):
           MATCH (p:Person) WHERE p.handle CONTAINS $t
           RETURN 'Person' AS kind, p.handle AS key, p.handle AS label
         }
-        RETURN kind, key, label LIMIT $limit""", {"t": t, "limit": limit})
+        RETURN kind, key, label LIMIT $limit""", {"t": t, "n": number.group(1) if number else None, "limit": limit})
+
+
+@cache
+def _names():
+    """Every person, SIG and folder, by kind: what a misspelt search is compared against."""
+    return q("""
+        MATCH (p:Person) RETURN 'Person' AS kind, p.handle AS key
+        UNION MATCH (s:SIG) RETURN 'SIG' AS kind, s.name AS key
+        UNION MATCH (d:Dir) RETURN 'Dir' AS kind, d.path AS key""")
+
+
+def close_names(text, limit=5):
+    """Names in the graph closest to one that matches nothing ('thokin' -> thockin), best first."""
+    kinds = {r["key"]: r["kind"] for r in _names()}
+    keys = difflib.get_close_matches(text.strip().lower().lstrip("@"), list(kinds), n=limit, cutoff=0.75)
+    return [{"kind": kinds[k], "key": k} for k in keys]
 
 
 # ---------- community documents (SIG READMEs, charters, annual reports) ----------

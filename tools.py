@@ -180,6 +180,11 @@ def search_graph(text: str):
     """Find folders, KEPs (design proposals), feature gates, SIGs (teams) or people by a name fragment.
     Use this first when the user names something vaguely, e.g. 'eviction', 'sidecar', 'scheduler'."""
     rows = Q.search(text, 15)
+    if not rows and (close := Q.close_names(text)):  # nothing by that name: say so, and offer the nearest names
+        refs = [node(r["kind"], r["key"]) for r in close]
+        return step({"exact_matches": [], "closest_names": close},
+                    f"No exact match; closest names: {', '.join(n['label'] for n in refs)}", nodes=refs,
+                    tables=[table("Closest names", [{"Kind": n["kind_label"], "Name": n["label"]} for n in refs])])
     refs = [node(r["kind"], r["key"], title=r["label"]) for r in rows]
     top = ", ".join(f"{n['label']} ({n['kind_label']})" for n in refs[:4])
     return step(rows, f"{len(rows)} matches" + (f": {top}" + (" …" if len(rows) > 4 else "") if rows else ""), nodes=refs,
@@ -756,7 +761,8 @@ def explore_search(text, limit=20):
     people, SIGs), then community documents by full text."""
     docs = [node("Doc", r["path"], title=r["title"]) for r in Q.search_docs(text, 8)]
     rows = [r for r in Q.search(text, 60) if r["kind"] in ACTIONS][:limit - len(docs)]
-    return [node(r["kind"], r["key"], title=r["label"] if r["label"] != r["key"] else None) for r in rows] + docs
+    found = [node(r["kind"], r["key"], title=r["label"] if r["label"] != r["key"] else None) for r in rows] + docs
+    return found or [{**node(r["kind"], r["key"]), "close": True} for r in Q.close_names(text)]  # a typo: nearest names
 
 
 def actions_for(kind):

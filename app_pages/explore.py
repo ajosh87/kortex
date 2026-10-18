@@ -30,10 +30,14 @@ with st.container(horizontal=True, vertical_alignment="bottom", gap="medium"):
                          placeholder="e.g. pkg/scheduler, sidecar, pohly, sig-node, annual report")
     matches, search_queries = search(text.strip()) if len(text.strip()) >= 2 else ([], [])
     choice = st.selectbox("Match", matches, index=0 if matches else None, key="explore-match",
-                          format_func=lambda n: f"{n['kind_label']} · {n['label']}" + (f" · {n['title']}" if n.get("title") else ""),
+                          format_func=lambda n: f"{n['kind_label']} · {n['label']}" + (f" · {n['title']}" if n.get("title") else "")
+                          + (" · closest name" if n.get("close") else ""),
                           placeholder="No matches" if text.strip() else "Type to search")
 if search_queries:
     ui.work(f"search for “{text.strip()}”", search_queries, f"{len(matches)} matches")
+if matches and matches[0].get("close"):
+    st.caption(f":material/spellcheck: Nothing is named “{text.strip()}”. Showing the closest names in the graph: "
+               + ", ".join(n["label"] for n in matches) + ".")
 
 actions = T.actions_for(choice["kind"]) if choice else []
 picked = st.segmented_control("2 · Pick a question", [a["tool"] for a in actions],
@@ -46,7 +50,8 @@ if text.strip() and len(text.strip()) >= 2 and not matches:
         counts = Q.stats()["counts"]
         st.markdown("Explore searches only what was loaded into the graph: "
                     + ", ".join(f"{c['n']:,} {PLURAL[c['kind']]}" for c in counts if c["kind"] in PLURAL)
-                    + ". Names are matched as fragments (folder paths, KEP titles, GitHub handles, SIG names); "
+                    + ". Names are matched as fragments (folder paths, KEP titles or numbers, GitHub handles with or "
+                      "without @, SIG names), with the closest names offered for a typo; "
                       "documents by their words (SIG and working-group READMEs, charters, annual reports, the DevStats README).")
         st.caption("Not loaded: issues, meeting notes, Slack, mailing lists, kubernetes.io docs and DevStats numbers. "
                    "The Data page lists every source and what each one covers.")
