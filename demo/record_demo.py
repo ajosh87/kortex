@@ -89,6 +89,20 @@ def scroll(page, pixels, steps=12):
     pause(0.4)
 
 
+def settled(page, quiet=2.0, timeout=90):
+    """Wait until the page has finished drawing: no loading placeholders and no script running, for `quiet` seconds."""
+    busy = "document.querySelector('[data-testid=\"stSkeleton\"], [data-testid=\"stStatusWidget\"] svg')"
+    end, calm = time.monotonic() + timeout, None
+    while time.monotonic() < end:
+        if page.evaluate(busy):
+            calm = None
+        elif calm is None:
+            calm = time.monotonic()
+        elif time.monotonic() - calm >= quiet:
+            return
+        pause(0.25)
+
+
 def go(name, heading=None):
     """Getting a scene ready: open a page from the top bar and wait until it has drawn (its heading shows), so the
     narration never starts over a blank page. Streamlit keeps a live connection open, so "network idle" never comes."""
@@ -198,6 +212,8 @@ def data(page):
     scroll(page, 420)
     pause(2.0)
     scroll(page, 420)
+    pause(2.0)
+    scroll(page, 520)  # the whole graph, grouped by SIG
 
 
 def outro(page):
@@ -235,11 +251,12 @@ SCENES = [
      "annual reports and the DevStats guide. Here is SIG Node's annual report for 2024, linked to the design "
      "decisions and the people it mentions. People appear only as GitHub handles.", nothing, explore_docs),
     ("Kortex remembers. Every question and answer is stored in FalkorDB, in a separate graph for each user, linked "
-     "to the folders, people and decisions it used. The agent recalls earlier chats by topic, and the shared "
-     "Kubernetes graph never holds anyone's questions.", go("Memory", "Memory"), memory),
-    ("The Data page shows what the graph holds: about ten thousand nodes and thirty-three thousand relationships, "
-     "the schema as found in the data, and the exact commits it was loaded from. People appear only as public "
-     "GitHub handles.", go("Data", "What the graph holds"), data),
+     "to the folders, people and decisions it used. To recall, the agent walks both graphs: from a topic to the "
+     "code and decisions around it, then to the earlier questions that touched them. The shared Kubernetes graph "
+     "never holds anyone's questions.", go("Memory", "Memory"), memory),
+    ("The Data page shows what the graph holds: about seven thousand nodes and twenty-seven thousand relationships, "
+     "the schema as found in the data, and the whole graph grouped by SIG, with lines for the design decisions "
+     "departments share. People appear only as public GitHub handles.", go("Data", "What the graph holds"), data),
     ("Kortex is open source and live on Streamlit, backed by FalkorDB Cloud. Bring your own model key, or explore "
      "without one. It is entered in all three tracks: agents that act on connected data, agent memory, and "
      "company brain. Thanks for watching.", go("Ask"), outro),
@@ -272,7 +289,8 @@ def record(url, lengths):
         try:
             page.goto(url)
             page.wait_for_selector(".st-key-starters", timeout=120_000)
-            pause(3)
+            settled(page)  # the sidebar chats and the console load after the cards: start only when all is drawn
+            pause(2)
             for i, ((_, prepare, show), length) in enumerate(zip(SCENES, lengths)):
                 ready = time.monotonic() - t0
                 prepare(page)

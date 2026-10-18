@@ -34,6 +34,20 @@ ui.section("Schema, as found in the data", "schema")
 with ui.tile("data-schema"):
     ui.graph_view(s["schema"], caption="Every node kind and relationship type in the graph, with how many relationships of each.")
 
+@st.cache_data(ttl=300, show_spinner="Grouping the whole graph by SIG…")
+def sig_map():
+    return traced(Q.sig_map)
+
+
+(graph, sigs, links), map_queries = sig_map()
+ui.work("Data page: the whole graph grouped by SIG", map_queries, f"{len(sigs)} SIGs, {len(links)} collaborations")
+ui.section("The whole graph, by SIG", "bubble_chart")
+with ui.tile("data-sig-map"):
+    st.markdown("Each SIG is a cluster: the folders labelled for it, the KEPs it owns and the people who lead it "
+                "(click one for its details). A line from one SIG to another counts the KEPs the first owns and the "
+                "second takes part in (4 or more), so it shows which departments work together most.")
+    ui.graph_view(graph, key="data-sig-map", caption=f"All {len(sigs)} SIGs; {len(links)} SIG pairs share 4 or more KEPs.")
+
 ui.section("Source", "commit")
 with st.container(horizontal=True, gap="small"):
     for c in s["commits"]:

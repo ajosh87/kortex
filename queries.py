@@ -490,6 +490,25 @@ def stats():
             "schema": schema_graph}
 
 
+def sig_map(min_keps=4):
+    """The whole graph as clusters, one per SIG (department): how much each owns (folders labelled for it, KEPs it
+    owns, people who lead it), and how SIGs work together: KEPs one SIG owns and another takes part in (pairs with
+    at least `min_keps`). Returns a graph for the UI and the rows behind it."""
+    sigs = q("""
+        MATCH (s:SIG)
+        OPTIONAL MATCH (d:Dir)-[:LABELED]->(s) WITH s, count(DISTINCT d) AS folders
+        OPTIONAL MATCH (k:KEP)-[:OWNED_BY]->(s) WITH s, folders, count(DISTINCT k) AS keps
+        OPTIONAL MATCH (p:Person)-[:CHAIRS|TECH_LEADS]->(s)
+        RETURN s.name AS sig, folders, keps, count(DISTINCT p) AS leads ORDER BY keps DESC""")
+    links = q("""
+        MATCH (a:SIG)<-[:OWNED_BY]-(k:KEP)-[:INVOLVES]->(b:SIG) WHERE a <> b
+        WITH a, b, count(DISTINCT k) AS n WHERE n >= $min
+        RETURN a.name AS owner, b.name AS partner, n ORDER BY n DESC""", {"min": min_keps})
+    nodes = [node("SIG", r["sig"], title=f"{r['keps']} KEPs · {r['folders']} folders") for r in sigs]
+    edges = [{"src": f"SIG:{r['owner']}", "rel": f"{r['n']} KEPs", "dst": f"SIG:{r['partner']}"} for r in links]
+    return {"nodes": nodes, "edges": edges, "total_nodes": len(nodes), "shown_nodes": len(nodes)}, sigs, links
+
+
 # ---------- node profiles (the detail panel shown when a graph node is clicked) ----------
 
 def sig_profile(sig):
