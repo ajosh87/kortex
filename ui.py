@@ -288,9 +288,10 @@ def terminal_css():
 {tags}
 .st-key-console-log summary [data-testid="stIconMaterial"] {{ color: #8B949E !important; }}
 .st-key-console-log [data-testid="stCode"] pre {{ background: #161B22 !important; border: 1px solid #30363D !important; }}
-.st-key-console-head {{ position: relative; background: #161B22; margin: -0.9rem -0.9rem 0 -0.9rem !important;
-  width: calc(100% + 1.8rem) !important; box-sizing: border-box; padding: 0.6rem 0.75rem 0.55rem 4.4rem !important;
-  border-bottom: 1px solid #30363D !important; }}  /* the bar runs from edge to edge of the panel */
+.st-key-console-open, .st-key-console-auto {{ padding: 0 !important; gap: 0 !important; }}
+[data-testid="stLayoutWrapper"]:has(> .st-key-console-head), .st-key-console-head {{ flex-shrink: 0 !important; }}  /* the log grows, the bar keeps its height */
+.st-key-console-head {{ position: relative; background: #1C2128; margin: 0 !important; width: 100% !important;
+  box-sizing: border-box; padding: 0.6rem 0.75rem 0.55rem 4.4rem !important; border-bottom: 1px solid #30363D !important; }}
 .st-key-console-head::before {{ content: ""; position: absolute; left: 1rem; top: 0.95rem; width: 11px; height: 11px; border-radius: 50%;
   background: #FF5F57; box-shadow: 17px 0 0 #FEBC2E, 34px 0 0 #28C840; }}
 .st-key-console-head p {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; font-size: 0.78rem !important;
@@ -298,13 +299,17 @@ def terminal_css():
 .st-key-console-head [data-testid="stCaptionContainer"] p {{ font-size: 0.68rem !important; color: #6E7681 !important;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.1rem !important; }}
 .st-key-console-head > div:first-child {{ min-width: 0; }}  /* lets the subtitle shorten instead of wrapping */
-.st-key-console-log {{ padding-top: 0.45rem; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+.st-key-console-head [data-testid="stCaptionContainer"] {{ margin-bottom: 0 !important; }}  /* undo Streamlit's -1rem: the bar holds its subtitle */
+.st-key-console-log {{ padding: 0.6rem 0.9rem 0.6rem !important; box-sizing: border-box;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }}  /* lines fade as they scroll under the bar */
+.st-key-console-empty, .st-key-console-empty [data-testid="stCaptionContainer"] {{ margin: 0 !important; padding: 0 !important; }}
+.st-key-console-empty [data-testid="stCaptionContainer"] p {{ color: #8B949E !important; margin: 0 !important; }}
+.st-key-console-empty p::before {{ content: "kortex $ "; color: #7EE787; font-weight: 600; }}
+.st-key-console-empty p::after {{ content: " ▋"; color: #7EE787; animation: kx-blink 1.1s steps(1) infinite; }}
 .st-key-console-empty p {{ font-family: "JetBrains Mono", ui-monospace, monospace !important; font-size: 0.76rem !important; color: #7EE787 !important; }}
 div[class*="st-key-log-"] p {{ padding-left: 1.6em; text-indent: -1.6em; }}  /* wrapped lines sit under the text, not the time */
 div[class*="st-key-log-"] p > * {{ text-indent: 0; }}  /* the indent is inherited: the time and tag keep their place */
-.st-key-console-log::after {{ content: "▋"; display: block; color: #7EE787; font-family: "JetBrains Mono", monospace; font-size: 0.8rem;
-  padding-top: 0.2rem; animation: kx-blink 1.1s steps(1) infinite; }}
 @keyframes kx-blink {{ 50% {{ opacity: 0; }} }}
 .st-key-console-log {{ scrollbar-width: thin; }}
 .st-key-console-log::-webkit-scrollbar {{ width: 8px; }}
@@ -690,4 +695,4 @@ def console_end():
     """Called once at the end of every run: says so when nothing ran in the background."""
     if not st.session_state["_console_lines"]:
         with console(), st.container(key="console-empty"):
-            st.caption("$ waiting… ask something, or open Explore")
+            st.caption("waiting · ask something or open Explore")
