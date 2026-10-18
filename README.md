@@ -54,9 +54,9 @@ Tracks: **Company Brain** (primary), **Agents That Act on Connected Data**, **Ag
 
 Conversation memory is **not** in this graph. Each user has a memory graph of their own (see "How memory works"):
 ```
-(:User {name})-[:HAD]->(:Session {id})-[:HAS]->(:Turn {question, answer, at, refs})
+(:User {name})-[:HAD]->(:Session {id})-[:HAS]->(:Turn {question, answer, at, refs, unverified})
 (:Turn)-[:NEXT]->(:Turn)                               the user's timeline, across chats
-(:Turn)-[:MENTIONS]->(:Ref {id, kind, key, title})     what the answer used, by its key in the Kubernetes graph
+(:Turn)-[:MENTIONS]->(:Ref {id, kind, key, title})     every node the turn's tools returned, by its key in the Kubernetes graph
 ```
 
 About 10,100 nodes and 33,500 relationships: 586 OWNERS files, ~645 KEPs with their summaries, 24 SIGs,
@@ -210,21 +210,32 @@ show who uses the app. Inside it:
 
 - each question is a `Turn` in a `Session` (one chat), chained to the user's previous turn with `NEXT`: a timeline
   across all their chats;
-- each turn `MENTIONS` a `Ref` for every folder, KEP, person or SIG its answer used. A `Ref` holds the node's
-  kind and key, a pointer into the Kubernetes graph rather than a copy, so links and node details are resolved
-  there at read time.
+- each turn `MENTIONS` a `Ref` for every node its tools returned (up to 300): folders, KEPs, people, SIGs,
+  documents. A `Ref` holds the node's kind and key, a pointer into the Kubernetes graph rather than a copy, so
+  links and node details are resolved there at read time;
+- each turn keeps `unverified`: names its answer gave that no tool returned (shown as "Not from the graph").
 
 What this gives:
 - **Nothing personal is in the shared graph.** The Kubernetes graph holds only public project data, so no
   query on it, including the Cypher the model writes, can see anyone's questions.
-- **Memory still drives retrieval.** `recall_memory` finds earlier turns by topic (a turn about
-  `pkg/kubelet/eviction` matches "kubelet"); "what changed since I last asked" takes the date of that turn and
-  asks the Kubernetes graph for changes since then; continuing an older chat (or one from before a restart)
-  reads its turns back first, and the console says so.
+- **Recall is a walk across both graphs.** `recall_memory("eviction")` first resolves the topic in the
+  Kubernetes graph: the nodes it names (`pkg/kubelet/eviction`, eviction KEPs) and the code, KEPs, feature gates,
+  documents and PRs connected to them, one hop or two through a feature gate (so KEP-2837 reaches the folders
+  that check its gates). Then it finds the user's turns that point at any of those nodes in their memory graph,
+  direct matches first, and says why each was recalled ("uses pkg/kubelet/eviction", "connected to
+  pkg/kubelet/cm"). People, teams and SIGs are not followed, since they connect to almost everything. Turns
+  whose question has the words count too.
+- **Memory is not taken as fact.** The agent is told recalled answers are what was said, to re-check facts with
+  the graph tools before repeating them, and never to repeat a name stored as `unverified`.
+- "What changed since I last asked" takes the date of the recalled turn and asks the Kubernetes graph for changes
+  since then; continuing an older chat (or one from before a restart) reads its turns back first, and the
+  console says so.
 - **Reloads do not touch memory.** `ingest.py` replaces the Kubernetes graph whole; refs keep pointing at the same
   keys, so nothing has to be re-linked.
 
-Memory is separated by the name you type, with no login: anyone who types the same name sees that name's chats.
+Known limits: memory is separated by the name you type, with no login, so anyone who types the same name sees
+that name's chats. Memory keeps whole exchanges only (no summaries or facts derived about a user), there is no
+"forget this chat" yet, and one user's chats never help another's answers.
 
 FalkorDB runs with append-only persistence (`--appendonly yes` in the Docker command below): every write,
 including each remembered turn, goes to the append-only file and is flushed to disk every second, so a crash

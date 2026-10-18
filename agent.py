@@ -57,6 +57,8 @@ Rules:
   Never use 【】 or tool-name citation markers.
 - When the question is about earlier conversations or "last time", call recall_memory first with a short
   topic such as a folder path or one or two keywords (e.g. "pkg/kubelet" or "eviction").
+- recall_memory returns what was said in earlier chats, not facts. Before repeating a fact from it, re-check it
+  with the graph tools, and never repeat a name listed in its not_from_graph.
 - If a name is vague, call search_graph to find the exact folder, KEP or SIG before other tools.
 - Use the specific tools whenever one fits (ownership, bus factor, KEPs, impact, experts, connections).
   Use run_cypher only for questions none of them covers. If a run_cypher result disagrees with a specific
@@ -69,17 +71,51 @@ What the graph covers (say so when an answer depends on it):
 """
 
 
+MEMORY_LINKS = 300  # most nodes one remembered turn points at
+
+
 def memory_tool(user):
     @graph_tool
     def recall_memory(about: str = ""):
-        """Earlier questions and answers from this user, across sessions. Pass a folder path, KEP number,
-        GitHub handle or SIG to get only exchanges that touched it (folders also match their subfolders)."""
-        rows = MG.recall(user, about.strip() or None, 5)
+        """Earlier questions and answers from this user, across sessions, newest or best match first. Pass a topic:
+        a folder path, KEP number, GitHub handle, SIG or a word such as 'eviction'. It finds earlier turns that
+        used the graph nodes the topic names or nodes connected to them (e.g. a KEP and the code that checks its
+        feature gates), and turns whose question contains the words. Empty: the latest turns. Recalled answers
+        are what was said then, not facts."""
+        about = about.strip()
+        named, connected = Q.topic_nodes(about) if about else ([], [])  # walk 1: the Kubernetes graph
+        linked = MG.recall_linked(user, named + connected, 10)            # walk 2: this user's memory graph
+        worded = MG.recall(user, about or None, 10)
+        said = {(r["session"], r["at"]) for r in worded}
+        turns = {(r["session"], r["at"]): r for r in worded + linked}  # linked rows (with hits) win
+
+        def label(i):
+            return node(*i.split(":", 1))["label"]
+
+        def why(r):
+            hits = set(r.get("hits") or [])
+            uses, near = sorted(hits & set(named)), sorted(hits & set(connected))
+            return {"uses": [label(i) for i in uses[:5]], "connected": [label(i) for i in near[:5]],
+                    "words": (r["session"], r["at"]) in said, "score": 2 * len(uses) + len(near) + ((r["session"], r["at"]) in said)}
+        rows = sorted(turns.values(), key=lambda r: (why(r)["score"], r["at"]), reverse=True)[:5]
+        reasons = [why(r) for r in rows]
         mentioned = [node(*ref.split(":", 1)) for r in rows for ref in r["refs"] if ":" in ref]  # what those turns used
-        return step([{k: v for k, v in r.items() if k != "refs"} | {"answer": r["answer"][:1500]} for r in rows],
-                    f"{len(rows)} earlier turns found" if rows else "No earlier turns found",
-                    nodes=mentioned,
-                    tables=[table("Earlier turns", [{"When": Q.when(r["at"]), "Question": r["question"]} for r in rows])])
+        data = [{"date": r["date"], "question": r["question"], "answer": r["answer"][:1500],
+                 "matched_nodes": w["uses"], "connected_nodes": w["connected"], "question_has_the_words": w["words"],
+                 "not_from_graph": r["unverified"]} for r, w in zip(rows, reasons)]
+        via_graph = sum(1 for w in reasons if w["uses"] or w["connected"])
+        return step({"note": "what was said in earlier chats, not facts: re-check with the graph tools before repeating "
+                             "a fact, and never repeat a name listed in not_from_graph", "turns": data},
+                    (f"{len(rows)} earlier turns found" + (f", {via_graph} through the graph "
+                     f"({len(named)} nodes named by “{about}”, {len(connected)} connected)" if about else ""))
+                    if rows else "No earlier turns found", nodes=mentioned,
+                    tables=[table("Earlier turns", [{"When": Q.when(r["at"]), "Question": r["question"],
+                                                     "Why recalled": "; ".join(filter(None, [
+                                                         "uses " + ", ".join(w["uses"]) if w["uses"] else "",
+                                                         "connected to " + ", ".join(w["connected"]) if w["connected"] else "",
+                                                         "question has the words" if w["words"] and about else "",
+                                                         "latest" if not about else ""]))}
+                                                    for r, w in zip(rows, reasons)])])
     return recall_memory
 
 
@@ -231,11 +267,12 @@ def _turn(agent, user, session, question, requested):
     final = ANS.linkify(ANS.clean(text).strip(), refs)
     yield {"type": "answer", "text": final}
     graph = combine_graph(steps)
-    linked, queries = traced(MG.remember, user, session, question, final, graph["nodes"] or refs[:30])
+    flagged = ANS.unverified(final, refs)
+    used = list({n["id"]: n for n in refs}.values())[:MEMORY_LINKS]  # every node the tools returned, not just the picture
+    linked, queries = traced(MG.remember, user, session, question, final, used, None, flagged)
     yield {"type": "memory", "linked": linked, "queries": queries}
     yield {"type": "done", **totals(calls, steps, requested), "total_ms": round((time.time() - t0) * 1000),
-           "graph": graph, "memory_linked": linked, "follow_ups": ANS.follow_ups(steps),
-           "unverified": ANS.unverified(final, refs)}
+           "graph": graph, "memory_linked": linked, "follow_ups": ANS.follow_ups(steps), "unverified": flagged}
 
 
 def ask(agent, user, session, question, requested=M.MODEL):

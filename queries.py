@@ -343,6 +343,31 @@ def search(text, limit=10):
         RETURN kind, key, label LIMIT $limit""", {"t": t, "n": number.group(1) if number else None, "limit": limit})
 
 
+def topic_nodes(about, per_node=40):
+    """What a recall topic means in the Kubernetes graph, as node ids ('Dir:pkg/kubelet/eviction'), the keys memory
+    turns point at: the nodes the topic names (name search, plus the folder for a path), and the code, KEPs,
+    feature gates, documents and PRs connected to them: one hop, or two through a feature gate (a KEP and the code
+    that checks its gates). People, teams and SIGs are not followed: they connect to almost everything. At most
+    `per_node` connected nodes each. Returns (named, connected)."""
+    about = about.strip()
+    named = {f"{r['kind']}:{r['key']}" for r in search(about, 10)} if about else set()
+    if "/" in about:
+        named.add(f"Dir:{nearest_dir(about)}")
+    if not named:
+        return [], []
+    seed = NODE_KEY.replace("n:", "s:").replace("n.", "s.")
+    rows = q(f"""
+        MATCH (s) WHERE NOT s:Meta AND (labels(s)[0] + ':' + toString({seed})) IN $ids
+        OPTIONAL MATCH (s)--(n) WHERE n:Dir OR n:KEP OR n:FeatureGate OR n:Doc OR n:PR
+        WITH s, collect(DISTINCT labels(n)[0] + ':' + toString({NODE_KEY}))[0..$per] AS near
+        OPTIONAL MATCH (s)-[:INTRODUCES|CHECKS_GATE]->(:FeatureGate)<-[:INTRODUCES|CHECKS_GATE]-(n)
+        WHERE n <> s AND (n:Dir OR n:KEP)
+        WITH near, collect(DISTINCT labels(n)[0] + ':' + toString({NODE_KEY}))[0..$per] AS via_gate
+        RETURN near + via_gate AS connected""", {"ids": list(named), "per": per_node})
+    connected = {i for r in rows for i in r["connected"]} - named
+    return sorted(named), sorted(connected)
+
+
 @cache
 def _names():
     """Every person, SIG and folder, by kind: what a misspelt search is compared against."""

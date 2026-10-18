@@ -4,9 +4,13 @@ The Kubernetes graph holds only public project data, so nothing anyone asked can
 the Cypher the model writes. Each name typed in the sidebar gets a graph of its own, named after a hash of the
 name (a list of graphs does not show who uses the app):
 
-    (:User {name})-[:HAD]->(:Session {id})-[:HAS]->(:Turn {question, answer, at, refs})
+    (:User {name})-[:HAD]->(:Session {id})-[:HAS]->(:Turn {question, answer, at, refs, unverified})
     (:Turn)-[:NEXT]->(:Turn)                              the timeline: each turn points to the user's next one
-    (:Turn)-[:MENTIONS]->(:Ref {id, kind, key, title})    what the answer used, by its key in the Kubernetes graph
+    (:Turn)-[:MENTIONS]->(:Ref {id, kind, key, title})    every node the turn's tools returned, by its key in the
+                                                          Kubernetes graph
+
+`unverified` lists names the answer gave that no tool returned (flagged "Not from the graph" when shown), so a
+recalled answer never passes them off as facts.
 
 A Ref is a pointer, not a copy: `kind` and `key` identify the node in the Kubernetes graph (queries.node()
 builds its link), so memory is untouched when the Kubernetes data is reloaded and nothing has to be re-linked.
@@ -38,18 +42,20 @@ def _indexed(name):
     return name
 
 
-def remember(user, session, question, answer, mentions, at=None):
+def remember(user, session, question, answer, mentions, at=None, unverified=()):
     """Store one exchange in the user's memory graph: after their previous turn on the timeline, pointing at
-    every node it used (`mentions` are queries.node() refs). Returns how many nodes the turn points at."""
+    every node it used (`mentions` are queries.node() refs), with the names it gave that no tool returned.
+    Returns how many nodes the turn points at."""
     g = _indexed(graph_name(user))
     turn = mq(g, """
         MERGE (u:User {name: $user})
         MERGE (s:Session {id: $session}) MERGE (u)-[:HAD]->(s)
-        CREATE (t:Turn {question: $question, answer: $answer, at: coalesce($at, timestamp()), refs: $ids})
+        CREATE (t:Turn {question: $question, answer: $answer, at: coalesce($at, timestamp()), refs: $ids,
+                        unverified: $unverified})
         MERGE (s)-[:HAS]->(t)
         RETURN id(t) AS turn""",
               {"user": user, "session": session, "question": question, "answer": answer[:4000], "at": at,
-               "ids": list(dict.fromkeys(m["id"] for m in mentions))})[0]["turn"]
+               "ids": list(dict.fromkeys(m["id"] for m in mentions)), "unverified": list(unverified)})[0]["turn"]
     mq(g, """
         MATCH (t:Turn) WHERE id(t) = $turn
         MATCH (p:Turn) WHERE p <> t AND p.at <= t.at AND NOT (p)-[:NEXT]->()
@@ -82,12 +88,31 @@ def recall(user, about=None, limit=5):
         WITH s, t, reduce(hay = toLower(t.question), k IN keys | hay + ' ' + k) AS hay
         WHERE all(w IN $words WHERE hay CONTAINS w)
         WITH s, t ORDER BY t.at DESC LIMIT $limit
-        RETURN s.id AS session, t.question AS question, t.answer AS answer, t.at AS at, t.refs AS refs""",
-              {"words": words, "limit": limit})
+        RETURN s.id AS session, t.question AS question, t.answer AS answer, t.at AS at, t.refs AS refs,
+               t.unverified AS unverified""", {"words": words, "limit": limit})
     # Narrow to the turns first, then read their text: projecting t.answer straight after the reduce() crashed
     # FalkorDB (signal 11) in testing on falkordb/falkordb:latest, Redis 8.10.2.
-    return [{**r, "refs": r["refs"] or [], "date": datetime.fromtimestamp(r["at"] / 1000).strftime("%Y-%m-%d")}
-            for r in rows]
+    return [_turn_row(r) for r in rows]
+
+
+def recall_linked(user, ids, limit=10):
+    """Earlier exchanges of this user that point at any of these Kubernetes graph nodes (ids such as
+    'Dir:pkg/kubelet'), the ones pointing at the most of them first, each with the ids it matched (`hits`)."""
+    g = graph_name(user)
+    if not ids or not exists(g):
+        return []
+    rows = mq(g, """
+        MATCH (s:Session)-[:HAS]->(t:Turn)-[:MENTIONS]->(r:Ref) WHERE r.id IN $ids
+        WITH s, t, collect(r.id) AS hits
+        WITH s, t, hits ORDER BY size(hits) DESC, t.at DESC LIMIT $limit
+        RETURN s.id AS session, t.question AS question, t.answer AS answer, t.at AS at, t.refs AS refs,
+               t.unverified AS unverified, hits""", {"ids": list(ids), "limit": limit})
+    return [_turn_row(r) for r in rows]
+
+
+def _turn_row(r):
+    return {**r, "refs": r["refs"] or [], "unverified": r.get("unverified") or [],
+            "date": datetime.fromtimestamp(r["at"] / 1000).strftime("%Y-%m-%d")}
 
 
 def sessions(user, current=None, limit=8):
