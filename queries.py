@@ -509,6 +509,28 @@ def sig_map(min_keps=4):
     return {"nodes": nodes, "edges": edges, "total_nodes": len(nodes), "shown_nodes": len(nodes)}, sigs, links
 
 
+def sig_inside(sig, per=6):
+    """What one SIG cluster holds, for opening it in the whole-graph view: its leads, subprojects, latest KEPs,
+    labelled folders and newest documents (up to `per` of each), as (node, relationship) pairs pointing at the SIG."""
+    rows = q("""
+        MATCH (s:SIG {name: $s})
+        OPTIONAL MATCH (p:Person)-[r:CHAIRS|TECH_LEADS]->(s)
+        WITH s, collect(DISTINCT {kind: 'Person', key: p.handle, rel: toLower(type(r))})[0..$per] AS leads
+        OPTIONAL MATCH (sp:Subproject)-[:PART_OF]->(s)
+        WITH s, leads, collect(DISTINCT {kind: 'Subproject', key: sp.name, rel: 'part of'})[0..$per] AS subs
+        OPTIONAL MATCH (k:KEP)-[:OWNED_BY]->(s)
+        WITH s, leads, subs, k ORDER BY k.updated DESC
+        WITH s, leads, subs, collect(DISTINCT {kind: 'KEP', key: k.number, title: k.title, rel: 'owned by'})[0..$per] AS keps
+        OPTIONAL MATCH (d:Dir)-[:LABELED]->(s)
+        WITH s, leads, subs, keps, collect(DISTINCT {kind: 'Dir', key: d.path, rel: 'labeled'})[0..$per] AS dirs
+        OPTIONAL MATCH (doc:Doc)-[:ABOUT]->(s)
+        WITH leads, subs, keps, dirs, doc ORDER BY coalesce(doc.year, 0) DESC
+        WITH leads, subs, keps, dirs, collect(DISTINCT {kind: 'Doc', key: doc.path, title: doc.title, rel: 'about'})[0..3] AS docs
+        RETURN leads, subs, keps, dirs, docs""", {"s": sig, "per": per})
+    return [(node(m["kind"], m["key"], title=m.get("title")), m["rel"])
+            for r in rows for part in ("leads", "subs", "keps", "dirs", "docs") for m in r[part] or [] if m.get("key")]
+
+
 # ---------- node profiles (the detail panel shown when a graph node is clicked) ----------
 
 def sig_profile(sig):

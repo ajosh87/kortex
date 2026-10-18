@@ -39,13 +39,35 @@ def sig_map():
     return traced(Q.sig_map)
 
 
+@st.cache_data(ttl=300, show_spinner="Opening the cluster…")
+def sig_inside(sig):
+    return traced(Q.sig_inside, sig)
+
+
 (graph, sigs, links), map_queries = sig_map()
 ui.work("Data page: the whole graph grouped by SIG", map_queries, f"{len(sigs)} SIGs, {len(links)} collaborations")
+picked = st.session_state.get("data-sig-map-pick") or ""  # the node clicked last (set before this run)
+if picked.startswith("SIG:"):
+    st.session_state["sig-open"] = picked.split(":", 1)[1]  # clicking a SIG opens its cluster; other nodes keep it open
+opened = st.session_state.get("sig-open")
+if opened:
+    members, inside_queries = sig_inside(opened)
+    ui.work(f"Data page: opening the {opened} cluster", inside_queries, f"{len(members)} members shown")
+    known = {n["id"] for n in graph["nodes"]}
+    extra = {n["id"]: n for n, _ in members if n["id"] not in known}  # once each (a chair can also be a tech lead)
+    graph = {**graph, "nodes": graph["nodes"] + list(extra.values()),
+             "edges": graph["edges"] + [{"src": n["id"], "rel": rel, "dst": f"SIG:{opened}"} for n, rel in members]}
+    graph |= {"total_nodes": len(graph["nodes"]), "shown_nodes": len(graph["nodes"])}
 ui.section("The whole graph, by SIG", "bubble_chart")
 with ui.tile("data-sig-map"):
-    st.markdown("Each SIG is a cluster: the folders labelled for it, the KEPs it owns and the people who lead it "
-                "(click one for its details). A line from one SIG to another counts the KEPs the first owns and the "
-                "second takes part in (4 or more), so it shows which departments work together most.")
+    st.markdown("Each SIG is a cluster: the folders labelled for it, the KEPs it owns and the people who lead it. "
+                "**Click a SIG to open it**: its leads, subprojects, latest KEPs, folders and annual reports appear "
+                "around it, and clicking any of them shows its details. A line from one SIG to another counts the "
+                "KEPs the first owns and the second takes part in (4 or more).")
+    if opened:
+        row = next((r for r in sigs if r["sig"] == opened), {})
+        st.caption(f":material/open_in_full: {opened} is open: up to 6 of its {row.get('keps', '?')} KEPs, "
+                   f"{row.get('folders', '?')} folders and {row.get('leads', '?')} leads are shown.")
     ui.graph_view(graph, key="data-sig-map", caption=f"All {len(sigs)} SIGs; {len(links)} SIG pairs share 4 or more KEPs.")
 
 ui.section("Source", "commit")
