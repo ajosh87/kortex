@@ -363,25 +363,27 @@ def legend(graph):
             f'node [{node_attrs} fontsize=9 height=0.22]; {items} {ranks} {stack} }}')
 
 
-def graph_view(graph, key=None, caption=None, rankdir="LR", layout="dot", edge_labels=True):
+def graph_view(graph, key=None, caption=None, rankdir="LR", layout="dot", edge_labels=True, details=True,
+               click="click a node for its details"):
     """Legend + graph + what is shown. With a `key` the graph is interactive (zoom, pan, drag; click a node for
     its details below); without one it is a static Graphviz drawing whose nodes link to their source pages."""
     if not graph["edges"]:
         return
-    st.graphviz_chart(legend(graph))
     more = f"Showing {graph['shown_nodes']} of {graph['total_nodes']} nodes. " if graph["total_nodes"] > graph["shown_nodes"] else ""
-    if key is None:
+    if key is None:  # a static drawing gets a legend picture; the interactive graph draws its own, with counts
+        st.graphviz_chart(legend(graph))
         st.graphviz_chart(dot(graph, rankdir, layout, edge_labels), width="content", alt="Graph of the nodes and relationships used")
         st.caption(more + (caption or "Click a node to open its source page."))
         return
     t = tokens()
     picked = ui_graph.show(graph, key, colors=SOFT, fonts=FONT, background=paper(), accent=t["accent"],
                            chrome={"text": t["log"], "surface": t["surface"], "line": t["line"], "tint": t["tint"]},
-                           layout_name="radial" if layout == "neato" else "tree", edge_labels=edge_labels)
+                           layout_name="radial" if layout == "neato" else "tree", edge_labels=edge_labels,
+                           click=click if details else "click a kind to highlight its links")
     if more or caption:
         st.caption(more + (caption or ""))
     chosen = next((n for n in graph["nodes"] if n["id"] == picked), None)
-    if chosen:
+    if chosen and details:
         node_panel(chosen, key)
 
 
@@ -486,7 +488,7 @@ def turn_footer(d, turn, open_graph, on_follow_up=None):
             graph_view(g, key=gk)
     elif g["edges"]:
         with st.expander(graph_title(g), icon=":material/hub:", key=f"exp-graph-{turn}"):
-            graph_view(g)
+            graph_view(g, key=f"{gk}-past")
     with st.container(horizontal=True, gap="small"):
         numbers(d)
     if on_follow_up and d["follow_ups"]:

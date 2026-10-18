@@ -2,8 +2,11 @@
 
 Zoom (Ctrl/Cmd + scroll, or the buttons), pan and drag in the browser; a plain scroll keeps scrolling the page.
 The layout menu redraws the same graph another way (force, tree, circle, rings, grid), and the full-screen button
-opens it over the whole window (Esc closes it). Clicking a node sends its id back to Python, which shows the
-node's profile in the app. Only presentation lives here: nodes and edges come from the pipeline as they are.
+opens it over the whole window (Esc closes it). Hovering a node shows a tooltip (kind, name, title, links in
+view) and fades everything it is not linked to; hovering a line shows the relationship. The legend counts each
+kind and hides or shows it on a click. Clicking a node keeps its neighbourhood highlighted and sends its id back to
+Python, which shows the node's profile in the app (or opens it, in the Data page's browser). Only presentation
+lives here: nodes and edges come from the pipeline as they are.
 """
 import streamlit as st
 
@@ -12,6 +15,8 @@ CYTOSCAPE = "https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.esm.mi
 _HTML = """<div class="kx">
   <div class="kx-frame">
     <div class="kx-graph"></div>
+    <div class="kx-legend"></div>
+    <div class="kx-tip"></div>
     <div class="kx-loading"><span class="kx-spin"></span>Drawing the graph…</div>
     <div class="kx-tools">
       <select class="kx-layout" title="Draw the same graph another way"></select>
@@ -40,6 +45,17 @@ _CSS = """
 .kx-full { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 1000000; background: var(--kx-bg); padding: 14px 18px; box-sizing: border-box;
   box-shadow: 0 0 0 100vmax rgba(0,0,0,0.45); }
 .kx-full .kx-graph { height: calc(100vh - 64px) !important; }
+.kx-legend { position: absolute; top: 6px; left: 6px; display: flex; flex-wrap: wrap; gap: 4px; max-width: 58%; z-index: 2; }
+.kx-chip { font: 500 11px/1.6 Inter, sans-serif; padding: 0 8px; border-radius: 999px; cursor: pointer; color: #1C2030;
+  border: 1px solid rgba(28,32,48,0.18); user-select: none; }
+.kx-chip:hover { border-color: rgba(28,32,48,0.5); }
+.kx-chip.off { opacity: 0.35; text-decoration: line-through; }
+.kx-tip { position: absolute; display: none; pointer-events: none; z-index: 3; max-width: 280px; padding: 7px 10px;
+  border-radius: 8px; background: var(--kx-surface); color: var(--kx-text); border: 1px solid var(--kx-line);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.14); font: 12px/1.4 Inter, sans-serif; }
+.kx-tip .k { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.7; }
+.kx-tip .t { opacity: 0.85; margin-top: 2px; }
+.kx-tip .m { opacity: 0.65; margin-top: 4px; font-size: 11px; }
 .kx-hint { font-size: 0.8rem; opacity: 0.7; padding-top: 0.25rem; color: var(--st-text-color); line-height: 1.35; }
 """
 
@@ -116,6 +132,7 @@ function draw(parentElement, data, setTriggerValue) {
     menu.innerHTML = Object.keys(data.layouts).map((name) => `<option>${name}</option>`).join("")
     const fit = () => { cy.fit(undefined, 24); if (cy.zoom() > 1.4) { cy.zoom(1.4); cy.center() } }  // small graphs stay readable, not huge
     menu.onchange = () => { cy.layout(data.layouts[menu.value] || data.layout).run(); fit() }
+    if (cy.nodes().length <= 15 && cy.zoom() < 0.6 && data.layouts.Rings) { menu.value = "Rings"; menu.onchange() }
     const fullBtn = parentElement.querySelector(".kx-full-btn")
     const setFull = (on) => {
       root.classList.toggle("kx-full", on)
@@ -127,10 +144,55 @@ function draw(parentElement, data, setTriggerValue) {
     const onKey = (e) => { if (e.key === "Escape" && root.classList.contains("kx-full")) setFull(false) }
     document.addEventListener("keydown", onKey, true)
     cy.on("dbltap", (evt) => { if (evt.target === cy) cy.fit(undefined, 16) })
-    cy.on("tap", "node", (evt) => setTriggerValue("selected", evt.target.id()))
-    cy.on("mouseover", "node", (evt) => { box.style.cursor = "pointer"; hint.textContent = evt.target.data("tip") })
-    cy.on("mouseout", "node", () => { box.style.cursor = "grab"; hint.textContent = data.hint })
-    if (data.selected) cy.$id(data.selected).select()
+    const esc = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]))
+    // legend: one chip per kind with its count; a click hides or shows that kind
+    const legend = parentElement.querySelector(".kx-legend")
+    const kinds = {}
+    cy.nodes().forEach((n) => { const k = n.data("kind_label"); kinds[k] = kinds[k] || { color: n.data("color"), n: 0 }; kinds[k].n++ })
+    legend.innerHTML = Object.entries(kinds).map(([k, v]) =>
+      `<span class="kx-chip" data-kind="${esc(k)}" style="background:${esc(v.color)}" title="Hide or show ${esc(k)}">${esc(k)} · ${v.n}</span>`).join("")
+    legend.querySelectorAll(".kx-chip").forEach((c) => {
+      c.onclick = () => { const off = c.classList.toggle("off"); cy.nodes().filter((n) => n.data("kind_label") === c.dataset.kind).style("display", off ? "none" : "element") }
+    })
+    // tooltip and neighbourhood highlight
+    const tip = parentElement.querySelector(".kx-tip")
+    const place = (evt) => {
+      const p = evt.renderedPosition || { x: 0, y: 0 }
+      tip.style.left = Math.max(4, Math.min(p.x + 14, box.clientWidth - tip.offsetWidth - 4)) + "px"
+      tip.style.top = Math.max(4, Math.min(p.y + 14, box.clientHeight - tip.offsetHeight - 4)) + "px"
+    }
+    const nodeTip = (n) => `<div class="k">${esc(n.data("kind_label"))}</div><b>${esc(n.data("name"))}</b>`
+      + (n.data("title") ? `<div class="t">${esc(n.data("title"))}</div>` : "")
+      + `<div class="m">${n.degree()} link${n.degree() === 1 ? "" : "s"} in view · ${esc(data.click)}</div>`
+    let picked = data.selected ? cy.$id(data.selected) : null
+    const focus = (n) => { cy.elements().addClass("faded"); n.closedNeighborhood().removeClass("faded").addClass("near") }
+    const unfocus = () => { cy.elements().removeClass("faded near"); if (picked && picked.nonempty()) focus(picked) }
+    cy.on("tap", "node", (evt) => { picked = evt.target; unfocus(); setTriggerValue("selected", evt.target.id()) })
+    cy.on("tap", (evt) => { if (evt.target === cy) { picked = null; unfocus() } })
+    let hovered = null
+    const leave = () => { hovered = null; box.style.cursor = "grab"; tip.style.display = "none"; cy.elements().removeClass("faded near"); unfocus() }
+    box.onmousemove = (e) => {  // a property, not addEventListener: a redraw replaces it instead of adding another
+      const r = box.getBoundingClientRect()
+      const x = e.clientX - r.left, y = e.clientY - r.top, at = { renderedPosition: { x, y } }
+      const hit = cy.nodes(":visible").filter((n) => { const b = n.renderedBoundingBox(); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2 }).last()
+      if (hit.nonempty()) {
+        if (!hovered || hovered.id() !== hit.id()) {
+          hovered = hit; box.style.cursor = "pointer"; cy.elements().removeClass("faded near"); focus(hit)
+          tip.innerHTML = nodeTip(hit); tip.style.display = "block"
+        }
+        place(at)
+        return
+      }
+      if (hovered) leave()
+      const edge = cy.edges(":visible").filter((ed) => { const m = ed.renderedMidpoint(); return Math.abs(m.x - x) < 16 && Math.abs(m.y - y) < 10 }).first()
+      if (edge.nonempty()) {
+        tip.innerHTML = `<b>${esc(edge.source().data("name"))}</b> → <i>${esc(edge.data("label"))}</i> → <b>${esc(edge.target().data("name"))}</b>`
+        tip.style.display = "block"; place(at)
+      } else tip.style.display = "none"
+    }
+    box.onmouseleave = leave
+    hint.textContent = `${cy.nodes().length} nodes · ${cy.edges().length} links · ${data.hint}`
+    if (data.selected) { cy.$id(data.selected).select(); unfocus() }
     charts.set(parentElement, { cy, signature, onScroll, onKey })
     loading.style.display = "none"
   }).catch(() => { loading.style.display = "none"; hint.textContent = "The interactive graph could not load (the graph library needs internet access)." })
@@ -162,7 +224,8 @@ def elements(graph, colors, fonts):
             name = "…/" + "/".join(name.split("/")[-2:])
         label = name + (f"\n{title[:28]}{'…' if len(title) > 28 else ''}" if title else "")
         nodes.append({"data": {"id": n["id"], "label": label, "color": colors.get(n["kind"], "#e2e8f0"),
-                               "font": fonts.get(n["kind"], "#0f172a"), "tip": f"{n['kind_label']}: {title or n['key']} (click for details)",
+                               "font": fonts.get(n["kind"], "#0f172a"), "kind": n["kind"], "kind_label": n["kind_label"],
+                               "name": n["label"], "title": title if title and title != n["label"] else "",
                                **_size(label)}})
     edges = [{"data": {"id": f"e{i}", "source": e["src"], "target": e["dst"], "label": e["rel"]}} for i, e in enumerate(graph["edges"])]
     return nodes + edges
@@ -184,6 +247,8 @@ def stylesheet(background, edge_labels=True, accent="#4F46E5"):
             "label": "data(label)" if edge_labels else "", "font-size": 9, "color": edge, "text-rotation": "autorotate",
             "text-background-color": background, "text-background-opacity": 0.9, "text-background-padding": 2}},
         {"selector": "node:selected", "style": {"border-width": 5, "border-color": accent}},
+        {"selector": ".faded", "style": {"opacity": 0.12}},
+        {"selector": "edge.near", "style": {"line-color": accent, "target-arrow-color": accent, "width": 2.2, "color": accent}},
     ]
 
 
@@ -212,7 +277,8 @@ LAYOUTS = {
 }
 
 
-def show(graph, key, *, colors, fonts, background, chrome, accent="#4F46E5", layout_name="tree", edge_labels=True):
+def show(graph, key, *, colors, fonts, background, chrome, accent="#4F46E5", layout_name="tree", edge_labels=True,
+         click="click a node for its details"):
     """Draw an interactive graph. Returns the id of the node the user last clicked (kept across reruns).
     `chrome` colours the buttons and the full-screen backdrop: {text, surface, line, tint}."""
     pick_key = f"{key}-pick"
@@ -227,6 +293,6 @@ def show(graph, key, *, colors, fonts, background, chrome, accent="#4F46E5", lay
         "elements": elements(graph, colors, fonts), "style": stylesheet(background, edge_labels, accent),
         "layout": layout(layout_name, len(graph["nodes"])), "height": height, "selected": st.session_state.get(pick_key), "min_zoom": 0.8,
         "layouts": {"Auto": layout(layout_name, len(graph["nodes"])), **LAYOUTS}, "chrome": {**chrome, "bg": background},
-        "hint": "Click a node for its details · drag to move · Ctrl + scroll or the buttons to zoom · "
-                "the menu draws it another way · ⛶ opens it full screen."})
+        "click": click,
+        "hint": f"hover a node for details · {click} · click the legend to hide a kind · Ctrl + scroll to zoom · ⛶ full screen"})
     return st.session_state.get(pick_key)

@@ -209,11 +209,20 @@ def memory(page):
 
 def data(page):
     pause(1.0)
-    scroll(page, 420)
+    scroll(page, 380)  # insights
+    pause(2.5)
+    scroll(page, 420)  # charts, then the whole graph grouped by SIG
     pause(2.0)
     scroll(page, 420)
-    pause(2.0)
-    scroll(page, 520)  # the whole graph, grouped by SIG
+    pause(1.5)
+    sig = page.locator(".st-key-browse-back")  # the browse controls sit just above the graph
+    if sig.count():
+        box = page.locator('[class*="st-key-tile-plain-data-sig-map"] .kx-graph').first.bounding_box()
+        if box:  # open the busiest cluster: the graph starts centred on its busiest node
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2, steps=25)
+            page.mouse.down()
+            page.mouse.up()
+            pause(3.0)
 
 
 def outro(page):
@@ -235,8 +244,9 @@ SCENES = [
     ("On the right, the console shows everything the agent does, as it happens: each model call, each tool, and "
      "every Cypher query. Open one to see its parameters and the exact rows FalkorDB returned.",
      first_query_ready, open_query),
-    ("In the answer, every person, design decision and folder links to its source, but only when the graph "
-     "returned it. If the model names something no tool found, Kortex flags it as not from the graph.",
+    ("This is the agent running live; the wait while the model works is trimmed in this video. In the answer, "
+     "every person, design decision and folder links to its source, but only when the graph returned it. If the "
+     "model names something no tool found, Kortex flags it as not from the graph.",
      answer_ready, read_answer),
     ("Below is the graph behind the answer. Click any node to read its profile straight from the graph: who "
      "approves it, which decisions shaped it, and what depends on it.", nothing, answer_graph),
@@ -254,9 +264,9 @@ SCENES = [
      "to the folders, people and decisions it used. To recall, the agent walks both graphs: from a topic to the "
      "code and decisions around it, then to the earlier questions that touched them. The shared Kubernetes graph "
      "never holds anyone's questions.", go("Memory", "Memory"), memory),
-    ("The Data page shows what the graph holds: about seven thousand nodes and twenty-seven thousand relationships, "
-     "the schema as found in the data, and the whole graph grouped by SIG, with lines for the design decisions "
-     "departments share. People appear only as public GitHub handles.", go("Data", "What the graph holds"), data),
+    ("The Data page is a dashboard read straight from the graph: about seven thousand nodes and twenty-seven "
+     "thousand relationships, the busiest SIG, the most depended-on code by PageRank, and the whole graph grouped "
+     "by SIG. Click any node to open it, and keep going.", go("Data", "What the graph holds"), data),
     ("Kortex is open source and live on Streamlit, backed by FalkorDB Cloud. Bring your own model key, or explore "
      "without one. It is entered in all three tracks: agents that act on connected data, agent memory, and "
      "company brain. Thanks for watching.", go("Ask"), outro),

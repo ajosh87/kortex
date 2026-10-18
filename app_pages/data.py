@@ -152,13 +152,15 @@ with ui.tile("data-sig-map"):
         shown = ", ".join(f"{rel} {k} of {t}" if t > k else f"{rel} {t}" for rel, k, t in opened_counts[-1])
         st.caption(f"{Q.node(*trail[-1].split(':', 1))['label']}: {shown}.")
     alone = sorted({r["sig"] for r in sigs} - {x for r in links for x in (r["owner"], r["partner"])})
-    ui.graph_view(graph, key=BROWSE, caption=f"All {len(sigs)} SIGs; lines join SIGs sharing 4 or more KEPs, and each "
+    ui.graph_view(graph, key=BROWSE, click="click a node to open it", caption=f"All {len(sigs)} SIGs; lines join SIGs sharing 4 or more KEPs, and each "
                                              f"SIG to its strongest partner; {len(graph['nodes'])} nodes shown."
                                              + (f" No shared KEPs or leads: {', '.join(alone)}." if alone else ""))
 
 ui.section("Schema, as found in the data", "schema")
 with ui.tile("data-schema"):
-    ui.graph_view(s["schema"], caption="Every node kind and relationship type in the graph, with how many relationships of each.")
+    ui.graph_view(s["schema"], key="data-schema", details=False,
+                  caption="Every node kind and relationship type in the graph, with how many relationships of each. "
+                          "Hover a line for the relationship; click a kind to highlight what it connects to.")
 
 ui.section("Source", "commit")
 with st.container(horizontal=True, gap="small"):
