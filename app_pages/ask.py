@@ -7,26 +7,26 @@ import agent as A
 import models as M
 import ui
 
-# Starter questions: (icon, title, the graph work it triggers, question).
+# Starter questions: (icon, title, the graph work it triggers, question, card hue).
 STARTERS = [
     (":material/route:", "Trace a decision to code and people",
      "KEP-2837 → its feature gate → the code that checks it → inherited OWNERS → the people who approve.",
-     "Trace KEP-2837 (pod-level resources) to the code it changes and the people who must approve that code."),
+     "Trace KEP-2837 (pod-level resources) to the code it changes and the people who must approve that code.", "indigo"),
     (":material/rate_review:", "Who should review an eviction change?",
      "Who can approve the folder (inherited OWNERS), intersected with who merged changes there recently.",
-     "I want to change pkg/kubelet/eviction. Who should review it, and which design decisions constrain the change?"),
+     "I want to change pkg/kubelet/eviction. Who should review it, and which design decisions constrain the change?", "violet"),
     (":material/local_fire_department:", "Riskiest code in the kubelet",
      "FalkorDB PageRank and betweenness over Go imports, then how many people can approve each package.",
-     "What is the most critical code in pkg/kubelet, and is any of it thinly owned?"),
+     "What is the most critical code in pkg/kubelet, and is any of it thinly owned?", "rose"),
     (":material/crisis_alert:", "What could break?",
      "Follows Go imports backwards, hop by hop until nothing new is reached, to every package and binary that depends on it.",
-     "If I change pkg/kubelet/eviction, what else could break?"),
+     "If I change pkg/kubelet/eviction, what else could break?", "amber"),
     (":material/edit_document:", "Write a review plan",
      "Owners, design decisions, impact and recent contributors, combined into a file you can download.",
-     "Write a review plan for a change to the soft eviction grace period in pkg/kubelet/eviction."),
+     "Write a review plan for a change to the soft eviction grace period in pkg/kubelet/eviction.", "teal"),
     (":material/psychology:", "What did I ask, and what changed?",
      "Recalls your earlier chats from graph memory, then lists the PRs and KEPs that changed since.",
-     "What did I ask you about the kubelet last time, and what has changed there in the last two weeks?"),
+     "What did I ask you about the kubelet last time, and what has changed there in the last two weeks?", "sky"),
 ]
 
 
@@ -56,8 +56,8 @@ def user_message(text):
 
 
 def starter(i, locked):
-    icon, title, how, question = STARTERS[i]
-    with ui.tile(f"starter-{i}", height="stretch"):
+    icon, title, how, question, hue = STARTERS[i]
+    with ui.tile(f"starter-{i}", fill=hue, height="stretch"):
         st.markdown(f"#### {icon} {title}")
         st.caption(how)
         st.space("stretch")

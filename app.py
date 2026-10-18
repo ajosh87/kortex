@@ -97,7 +97,6 @@ with st.sidebar:
                    "Data: public Kubernetes repositories. People appear only as GitHub handles.")
 
 ui.apply_style()
-ui.topbar()
 ui.console()
 page.run()
 ui.console_end()

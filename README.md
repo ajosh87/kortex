@@ -164,11 +164,11 @@ Four pages, top navigation. The sidebar holds your name, the model, the style sw
 | **Data** | Node counts by kind, the schema as found in the data (with relationship counts), and the exact source commits. |
 
 **Layout.** Like a desktop chat app: your chats on the left, the conversation in the middle, and the **console**
-on the right, with the style switch and a button to hide or show the console at the right of the top bar. The
+on the right, styled like a terminal: its × minimizes it to a tab on the right edge, and the tab brings it back. The
 console is a timestamped log of what runs in the background, written while it happens: model calls (model, time,
 tokens, cost, which tools it asked for), tool calls with their arguments, every Cypher query (open a line to see
 the query, its parameters and its response rows), the memory write, and the turn's totals. On Explore, Memory and
-Data it shows the queries behind the page. It is open by default; on narrow screens it starts hidden.
+Data it shows the queries behind the page. It is open by default; on narrow screens it starts minimized.
 
 **Interactive graphs.** Graphs are drawn with Cytoscape.js in a small Streamlit custom component (`ui_graph.py`):
 drag, Ctrl + scroll or the buttons to zoom, and click a node to see its profile in the app (approvers, owning
@@ -177,7 +177,8 @@ graph by `tools.node_card()`. A plain scroll keeps scrolling the page.
 
 **Look and feel.** One calm look built from the logo's colours: neutral surfaces with 1 px hairlines, rounded
 corners on one scale (8 px controls, 12 px cards and the composer), no hard shadows, the logo's indigo for actions
-and the open page, and its yellow only as a small highlight under each page title. Your questions are soft indigo
+and the open page, and its yellow as a small highlight under each page title. Starter cards each carry a hue
+that sits next to the logo's indigo (a coloured top edge and icon chip). Your questions are soft indigo
 bubbles; answers read straight on the page. Light and dark follow the viewer's system setting. Content sits in a
 readable column; overview screens use a grid of cards that wraps on narrow screens. The stylesheet is in
 `ui.apply_style()` and targets our own keys and Streamlit's `data-testid` attributes.

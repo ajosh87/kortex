@@ -6,9 +6,9 @@ One calm look, built from the logo's colours: soft neutral surfaces, 1 px hairli
 and its yellow only as a small highlight. Light and dark themes share the same tokens.
 
 Like a desktop chat app, the page has three parts: chats on the left (sidebar), the conversation in the middle, and a
-console panel on the right that stays in the background: a log of what ran (model calls, tool calls, and every Cypher
+console panel on the right, styled like a terminal: a log of what ran (model calls, tool calls, and every Cypher
 query with its parameters and response), written as it happens. It is open by default (on narrow screens it starts
-closed) and is shown or hidden from the top bar."""
+minimized); its × minimizes it to a tab on the right edge, and the tab brings it back."""
 import json
 import re
 from datetime import datetime
@@ -36,18 +36,29 @@ ICON = {"search_graph": "search", "who_owns": "approval", "design_constraints": 
 PHASE = {"thinking": "Model is choosing the next step", "tools": "Querying the graph", "writing": "Writing the answer"}
 
 
+# Card hues: (light solid, light tint, dark solid). Indigo is the logo's; the others sit next to it.
+HUES = {"indigo": ("#4F46E5", "#EEF0FF", "#818CF8"), "violet": ("#7C3AED", "#F3EEFF", "#A78BFA"),
+        "sky": ("#0284C7", "#E6F4FE", "#38BDF8"), "teal": ("#0D9488", "#E3F7F4", "#2DD4BF"),
+        "amber": ("#D97706", "#FFF4E0", "#FBBF24"), "rose": ("#E11D48", "#FFEBEF", "#FB7185")}
+
+# Console tag colours: a terminal palette, on the console's own dark background in both themes.
+TAG = {"you": "#79C0FF", "model": "#D2A8FF", "tool": "#FFA657", "cypher": "#7EE787", "memory": "#56D4DD",
+       "done": "#8B949E", "error": "#FF7B72", "page": "#8B949E"}
+
+
 def tokens():
     """The design's colours for the active theme: neutrals, plus the logo's indigo (accent) and yellow."""
     if st.context.theme.type == "dark":
         return {"page": "#0F1117", "side": "#0B0D13", "surface": "#171A24", "line": "#272C3B", "muted": "#9EA4B8",
                 "log": "#B7BCCB", "accent": "#818CF8", "tint": "rgba(99,102,241,0.16)", "tint_line": "rgba(129,140,248,0.38)",
                 "hover": "rgba(255,255,255,0.05)"}
-    return {"page": "#F7F7FB", "side": "#F1F2F7", "surface": "#FFFFFF", "line": "#E4E6EF", "muted": "#5B6070",
+    return {"page": "#F7F7FB", "side": "#F1F2F7", "surface": "#FFFFFF", "line": "#DCDFEA", "muted": "#5B6070",
             "log": "#3E4456", "accent": "#4F46E5", "tint": "#EEF0FF", "tint_line": "#D9DCFB", "hover": "rgba(28,32,48,0.05)"}
 
 
 def tile(key, fill=None, height="content", width="stretch"):
-    """A card: a bordered container. `fill="accent"` tints it with the logo's indigo (one result per page)."""
+    """A card: a bordered container. `fill="accent"` tints it with the logo's indigo (one result per page); a hue
+    name from HUES gives it that colour's top edge and icon chip."""
     return st.container(border=True, key=f"tile-{fill or 'plain'}-{key}", height=height, width=width)
 
 
@@ -100,27 +111,37 @@ div[class*="st-key-section-"] p { font-size: 0.8rem; font-weight: 600; letter-sp
    closed on narrow ones; "open" and "closed" are the visitor's choice. The page keeps clear of an open panel. */
 :root { --console-w: clamp(280px, 24vw, 340px); }
 [data-testid="stLayoutWrapper"]:has(> .st-key-console-open), [data-testid="stLayoutWrapper"]:has(> .st-key-console-auto),
-[data-testid="stLayoutWrapper"]:has(> .st-key-console-closed), [data-testid="stLayoutWrapper"]:has(> .st-key-topbar) {
+[data-testid="stLayoutWrapper"]:has(> .st-key-console-closed) {
   position: absolute !important; height: 0 !important; margin: 0 !important; }  /* out of the page flow */
 .st-key-console-open, .st-key-console-auto { position: fixed !important; top: 3.5rem; right: 0; bottom: 0;
   width: var(--console-w); z-index: 100; padding: 0.9rem 0.9rem 0.6rem; display: flex; flex-direction: column; }
 .st-key-console-closed { display: none !important; }
 [data-testid="stMain"]:has(.st-key-console-open), [data-testid="stMain"]:has(.st-key-console-auto) {
   padding-right: var(--console-w); box-sizing: border-box; }  /* padding, not margin: the page keeps its width */
-body:has(.st-key-console-auto) .st-key-topbar .st-key-console-show { display: none; }  /* auto, wide: offer to hide */
+/* minimized: a tab on the right edge that brings the console back */
+[data-testid="stLayoutWrapper"]:has(> .st-key-console-tab) { position: absolute !important; height: 0 !important; margin: 0 !important; }
+.st-key-console-tab { position: fixed !important; right: 0; top: 4.5rem; z-index: 100; width: 2.4rem !important; }
+.st-key-console-tab [data-testid="stElementContainer"], .st-key-console-tab [data-testid="stButton"],
+.st-key-console-tab button { width: 2.4rem !important; min-width: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+.st-key-console-tab [data-testid="stElementContainer"] { padding: 0 !important; margin: 0 !important; }
+.st-key-console-tab button { writing-mode: vertical-rl; border-radius: 10px 0 0 10px !important; padding: 0.8rem 0.4rem !important;
+  min-height: 0 !important; background: #0D1117 !important; color: #C9D1D9 !important; border: 1px solid #30363D !important; }
+.st-key-console-tab button:hover { color: #FFFFFF !important; border-color: #8B949E !important; }
+.st-key-console-tab button [data-testid="stIconMaterial"] { writing-mode: horizontal-tb; }
+[data-testid="stMain"]:has(.st-key-console-closed) { padding-right: 2.6rem; box-sizing: border-box; }
+body:not(:has(.st-key-console-closed)) .st-key-console-tab { display: none; }  /* open: no tab */
 @media (max-width: 1100px) {
-  .st-key-console-auto { display: none !important; }
-  [data-testid="stMain"]:has(.st-key-console-auto) { padding-right: 0; }
-  body:has(.st-key-console-auto) .st-key-topbar .st-key-console-show { display: block; }  /* auto, narrow: offer to show */
-  body:has(.st-key-console-auto) .st-key-topbar .st-key-console-hide { display: none; }
-  .st-key-console-open { width: min(92vw, 380px); box-shadow: -12px 0 32px rgba(0,0,0,0.18); }  /* over the page */
+  .st-key-console-auto { display: none !important; }  /* auto on a narrow screen: minimized */
+  [data-testid="stMain"]:has(.st-key-console-auto) { padding-right: 2.6rem; }
+  body:has(.st-key-console-auto) .st-key-console-tab { display: block; }
+  .st-key-console-open { width: min(92vw, 380px); box-shadow: -12px 0 32px rgba(0,0,0,0.25); }  /* over the page */
   [data-testid="stMain"]:has(.st-key-console-open) { padding-right: 0; }
+  [data-testid="stTopNavLink"] { padding: 0.4rem 0.55rem !important; font-size: 0.95rem !important; }
 }
-/* top bar control: the console button, left of Streamlit's own toolbar */
-.st-key-topbar { position: fixed !important; top: 0.55rem; z-index: 999991; width: auto !important; }
-.st-key-topbar [data-testid="stButton"] button { min-height: 2.1rem; }
 /* console: a small header, then a compact monospace log that fills the panel and scrolls */
+.st-key-console-head { padding-bottom: 0.55rem; border-bottom: 1px solid #21262D; }
 .st-key-console-head p { font-size: 0.85rem; margin: 0; }
+.st-key-console-head [data-testid="stButton"] button { min-height: 0 !important; padding: 0.15rem 0.3rem !important; }
 .st-key-console-head [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }  /* no -1rem: title and caption stack */
 .st-key-console-head [data-testid="stCaptionContainer"] p { font-size: 0.78rem; }
 .st-key-console-empty { text-align: center; padding-top: 2.5rem; }
@@ -198,11 +219,55 @@ div[class*="st-key-section-"] span[role="img"] {{ color: {t["accent"]} !importan
 .st-key-chats [data-testid="stButton"] button[kind="secondary"] {{ background: {t["tint"]} !important; }}
 .st-key-chats [data-testid="stButton"] button[kind="secondary"] p {{ color: {t["accent"]} !important; font-weight: 600; }}
 
-/* console: recessed like the sidebar, a hairline edge, muted text */
-.st-key-console-open, .st-key-console-auto {{ background: {t["side"]}; border-left: 1px solid {t["line"]}; }}
-.st-key-console-log [data-testid="stMarkdownContainer"] {{ color: {t["log"]}; }}
-.st-key-topbar [data-testid="stButton"] button {{ border: 1px solid {t["line"]} !important; background: {t["surface"]} !important; }}
+/* separations: the top bar and each answer get a hairline under them */
+[data-testid="stHeader"] {{ border-bottom: 1px solid {t["line"]}; }}
+[data-testid="stChatMessage"]:not(:has([data-testid="stChatMessageAvatarUser"])) {{ border-bottom: 1px solid {t["line"]} !important;
+  border-radius: 0 !important; padding-bottom: 1.4rem !important; margin-bottom: 1.4rem; }}
+
+{hue_css()}
+{terminal_css()}
 </style>"""
+
+
+def hue_css():
+    """Each hue: a coloured top edge on its cards, its icon chip, and a matching border on hover."""
+    dark = st.context.theme.type == "dark"
+    rules = []
+    for name, (solid, tint, solid_dark) in HUES.items():
+        c, bg = (solid_dark, f"{solid_dark}29") if dark else (solid, tint)
+        rules.append(f'''div[class*="st-key-tile-{name}-"] {{ border-top: 3px solid {c} !important; }}
+div[class*="st-key-tile-{name}-"]:hover {{ border-color: {c} !important; }}
+div[class*="st-key-tile-{name}-"] h4 span[role="img"] {{ color: {c} !important; background: {bg} !important; }}''')
+    return "\n".join(rules)
+
+
+def terminal_css():
+    """The console looks like a terminal in both themes: a dark panel, light monospace text, coloured tags,
+    dark code blocks with a terminal syntax palette."""
+    tags = "\n".join(f'[class*="st-key-log-{tag}-"] p > strong:first-of-type {{ color: {c} !important; }}' for tag, c in TAG.items())
+    return f'''.st-key-console-open, .st-key-console-auto {{ background: #0D1117 !important; border-left: 1px solid #30363D; }}
+.st-key-console-head p {{ color: #E6EDF3 !important; }}
+.st-key-console-head [data-testid="stCaptionContainer"] p, .st-key-console-empty [data-testid="stCaptionContainer"] p,
+.st-key-console-log [data-testid="stCaptionContainer"] p {{ color: #8B949E !important; }}
+.st-key-console-head [data-testid="stButton"] button {{ color: #8B949E !important; background: transparent !important; border: 0 !important; }}
+.st-key-console-head [data-testid="stButton"] button:hover {{ color: #E6EDF3 !important; background: rgba(255,255,255,0.08) !important; }}
+.st-key-console-log {{ scrollbar-color: #30363D transparent; }}
+.st-key-console-log [data-testid="stMarkdownContainer"], .st-key-console-log summary,
+.st-key-console-log summary * {{ color: #C9D1D9 !important; }}
+.st-key-console-log p code {{ background: rgba(110,118,129,0.18) !important; color: #A5D6FF !important; }}
+.st-key-console-log p > code:first-child {{ background: transparent !important; color: #6E7681 !important; padding: 0; }}  /* the time */
+{tags}
+.st-key-console-log summary [data-testid="stIconMaterial"] {{ color: #8B949E !important; }}
+.st-key-console-log [data-testid="stCode"] pre {{ background: #161B22 !important; border: 1px solid #30363D !important; }}
+.st-key-console-log [data-testid="stCode"] code, .st-key-console-log [data-testid="stCode"] code span {{ color: #C9D1D9 !important; }}
+.st-key-console-log .token.keyword {{ color: #FF7B72 !important; }}
+.st-key-console-log .token.function {{ color: #D2A8FF !important; }}
+.st-key-console-log .token.string {{ color: #A5D6FF !important; }}
+.st-key-console-log .token.number, .st-key-console-log .token.boolean, .st-key-console-log .token.property {{ color: #79C0FF !important; }}
+.st-key-console-log .token.class-name {{ color: #FFA657 !important; }}
+.st-key-console-log .token.relationship {{ color: #7EE787 !important; }}
+.st-key-console-log .token.variable {{ color: #FFA198 !important; }}
+.st-key-console-log .token.punctuation, .st-key-console-log .token.operator {{ color: #8B949E !important; }}'''
 
 
 def apply_style():
@@ -433,32 +498,8 @@ def render_turn(events, turn, live=False, latest=False, on_follow_up=None):
 
 # ---------------- console: what ran in the background ----------------
 
-TAG = {"you": "blue", "model": "violet", "tool": "orange", "cypher": "green", "memory": "blue", "done": "gray",
-       "error": "red", "page": "gray"}
-
-
 def _show_console(show):
     st.session_state.console_open = show
-
-
-def topbar():
-    """The control at the right of the top bar: the button that shows or hides the console. On Streamlit Community
-    Cloud it sits left of its own Fork and GitHub buttons."""
-    right = "9rem" if ".streamlit.app" in (st.context.url or "") else "3.25rem"
-    # the page links centre in the top bar's remaining space, so they never run under these controls
-    st.html(f"""<style>.st-key-topbar {{ right: {right}; }}
-[data-testid="stTopNav"] {{ padding-right: calc({right} + 7.5rem) !important; }}
-@media (max-width: 1100px) {{
-  [data-testid="stTopNavLink"] {{ padding: 0.4rem 0.55rem !important; font-size: 0.95rem !important; }}
-}}</style>""")
-    shown = st.session_state.get("console_open")  # None until the visitor chooses: open on wide screens
-    with st.container(key="topbar", horizontal=True, vertical_alignment="center", gap="small", width="content"):
-        if shown is not False:
-            st.button("Console", icon=":material/right_panel_close:", key="console-hide", type="tertiary",
-                      on_click=_show_console, args=(False,), help="Hide the console")
-        if shown is not True:
-            st.button("Console", icon=":material/right_panel_open:", key="console-show", type="tertiary",
-                      on_click=_show_console, args=(True,), help="Show the console")
 
 
 def console():
@@ -467,10 +508,17 @@ def console():
     if st.session_state.get("_console") is None:
         mode = {None: "auto", True: "open", False: "closed"}[st.session_state.get("console_open")]
         with st.container(key=f"console-{mode}", gap="small"):
-            with st.container(key="console-head", gap=None):
-                st.markdown("**:material/terminal: Console**")
-                st.caption("Model calls, tool calls and every Cypher query, as they run.")
+            with st.container(key="console-head", horizontal=True, vertical_alignment="top", gap="small"):
+                with st.container(gap=None):
+                    st.markdown("**:material/terminal: Console**")
+                    st.caption("Model calls, tool calls and every Cypher query, as they run.")
+                st.button("", icon=":material/close:", key="console-close", type="tertiary", help="Minimize the console",
+                          on_click=_show_console, args=(False,))
             st.session_state["_console"] = st.container(height=400, autoscroll=True, key="console-log", gap=None, border=False)
+        if mode != "open":  # minimized (or "auto", which is minimized on narrow screens): the tab to bring it back
+            with st.container(key="console-tab", width="content"):
+                st.button("Console", icon=":material/terminal:", key="console-reopen", help="Show the console",
+                          on_click=_show_console, args=(True,))
         st.session_state["_console_lines"] = 0
     return st.session_state["_console"]
 
@@ -481,8 +529,9 @@ def clock(ms):
 
 
 def line(at, tag, text):
-    with console():
-        st.markdown(f"{clock(at)}:{TAG[tag]}[**{tag}**] {text}")
+    """One log line. Its container is named after the tag, which gives the tag its terminal colour."""
+    with console(), st.container(key=f"log-{tag}-{st.session_state['_console_lines']}"):
+        st.markdown(f"{clock(at)}**{tag}** {text}")
     st.session_state["_console_lines"] += 1
 
 
@@ -494,9 +543,9 @@ def query_line(qy):
     """One Cypher query: a single line that opens to the query, its parameters and its response."""
     first = qy["cypher"].splitlines()[0]
     result, rows = qy.get("result", []), qy["rows"]
-    label = (f"{clock(qy.get('at'))}:{TAG['cypher']}[**cypher**] `{first[:44]}{'…' if len(first) > 44 else ''}` "
+    label = (f"{clock(qy.get('at'))}**cypher** `{first[:44]}{'…' if len(first) > 44 else ''}` "
              f"· {rows} row{'s' if rows != 1 else ''} · {qy['ms']:g} ms" + (" · your memory graph" if qy.get("graph") == "memory" else ""))
-    with console(), st.expander(label):
+    with console(), st.container(key=f"log-cypher-{st.session_state['_console_lines']}"), st.expander(label):
         st.code(qy["cypher"], language="cypher", wrap_lines=True)
         if qy["params"]:
             st.caption("Parameters")
