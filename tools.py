@@ -76,7 +76,13 @@ def describe(name, args):
 
 def table(title, rows, links=None):
     """A titled table for people. `links` maps a column to the node kind its values are; those cells hold
-    the node's URL and the UI shows the key extracted by Q.LINK_TEXT."""
+    the node's URL and the UI shows the key extracted by Q.LINK_TEXT. A column that mixes numbers and text (a year
+    or "", a count next to names) becomes text, so the table converts cleanly for display."""
+    cols = {c for r in rows for c in r}
+    mixed = {c for c in cols if any(isinstance(r.get(c), str) for r in rows)
+             and any(isinstance(r.get(c), (int, float)) and not isinstance(r.get(c), bool) for r in rows)}
+    rows = [{c: str(v) if c in mixed and isinstance(v, (int, float)) and not isinstance(v, bool) else v for c, v in r.items()}
+            for r in rows] if mixed else rows
     return {"title": title, "rows": rows, "links": {col: Q.LINK_TEXT[kind] for col, kind in (links or {}).items()}}
 
 
