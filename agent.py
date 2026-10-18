@@ -109,7 +109,7 @@ def memory(user, session):
     turns = MG.session_turns(user, session)
     nodes, edges = {}, []
     for i, t in enumerate(turns, 1):
-        turn = node("Turn", f"{session}:{i}", label=f"Q{i} · {t['when'][-5:]}", title=t["question"])
+        turn = node("Turn", f"{session}:{i}", label=f"Q{i}", title=t["question"])
         nodes[turn["id"]] = turn
         for ref in t["refs"]:
             nodes[ref["id"]] = ref

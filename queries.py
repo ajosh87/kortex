@@ -333,7 +333,13 @@ def search(text, limit=10):
 # ---------- agent memory: conversations are part of the graph ----------
 
 def when(ms):
-    return datetime.fromtimestamp(ms / 1000).strftime("%b %d, %H:%M") if ms else ""
+    """A time for people, with the server's zone as an offset ('Oct 17, 10:53 UTC' on Streamlit Community Cloud,
+    'Oct 17, 16:23 UTC+05:30' in India)."""
+    if not ms:
+        return ""
+    d = datetime.fromtimestamp(ms / 1000).astimezone()
+    mins = int(d.utcoffset().total_seconds() // 60)
+    return f"{d:%b %d, %H:%M} UTC" + (f"{'+' if mins > 0 else '-'}{abs(mins) // 60:02d}:{abs(mins) % 60:02d}" if mins else "")
 
 
 @cache

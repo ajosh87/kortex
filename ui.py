@@ -79,6 +79,8 @@ BASE_CSS = """<style>
 /* chat: the person on the right, the agent on the left */
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { flex-direction: row-reverse; }
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) [data-testid="stChatMessageContent"] { text-align: left; }
+/* a disabled chat input (no API key yet) measures its height once, before its row has its width, and never again */
+[data-testid="stChatInput"] textarea:disabled { height: auto !important; max-height: 2.6rem !important; overflow: hidden; }
 /* wide tables in answers scroll inside their own box instead of widening the page */
 [data-testid="stMarkdownContainer"] table { display: block; max-width: 100%; overflow-x: auto; }
 /* room to breathe: a readable column in the middle of wide screens, generous margins, roomier tiles */
