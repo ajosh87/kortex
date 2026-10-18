@@ -8,3 +8,4 @@ backups/
 .ruff_cache/
 .claude/
 .env.cloud
+demo/out/

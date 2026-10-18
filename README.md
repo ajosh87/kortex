@@ -313,6 +313,20 @@ Judges can paste their own key in the sidebar; it stays in that browser session 
 Any model with tool calling works. On OpenRouter, `MODEL_FALLBACKS` lists backup models tried when the main
 one fails or is rate-limited. The Explore page needs no model at all.
 
+## Demo video
+
+The demo video is generated, not hand-edited. With the app running locally (`uv run streamlit run app.py --server.port 8502`):
+
+```bash
+uv run demo/record_demo.py
+```
+
+It speaks each scene's narration with an AI voice (edge-tts), drives and records the app in a headless browser
+(Playwright), and joins sound and picture with ffmpeg into `demo/out/kortex-demo.mp4`, plus subtitles
+(`kortex-demo.srt`). Each scene waits for its narration to finish before the next one starts, and each voice clip
+is placed at the moment its scene began, so the two stay in step even when the model takes longer to answer. The
+narration and the clicks live together in `SCENES` in `demo/record_demo.py`.
+
 ## Deployment
 
 1. Create a free instance on [FalkorDB Cloud](https://app.falkordb.cloud/). Its endpoint (host and port) is on
@@ -369,3 +383,4 @@ assistant) in a guided session; commits carry a `Co-Authored-By: Claude` line, a
 The author chose the problem and the data, set the design rules (functional style, a UI that only renders what
 the pipeline returns, transparency for every answer, per-user memory, security limits), reviewed the changes and
 tested the app. At run time, answers come from the model the user picks (OpenRouter, Groq, OpenAI or Bedrock).
+The demo video's voice-over is AI-generated (a Microsoft neural voice through edge-tts).

@@ -11,6 +11,7 @@ query with its parameters and response), written as it happens. It is open by de
 minimized); its × minimizes it to a tab on the right edge, and the tab brings it back."""
 import json
 import re
+import time
 from datetime import datetime
 
 import streamlit as st
@@ -34,6 +35,7 @@ ICON = {"search_graph": "search", "who_owns": "approval", "design_constraints": 
         "best_reviewers": "rate_review"}
 
 PHASE = {"thinking": "Model is choosing the next step", "tools": "Querying the graph", "writing": "Writing the answer"}
+REDRAW = 0.25  # seconds between redraws of an answer that is still streaming
 
 
 # Card hues: (light solid, light tint, dark solid). Indigo is the logo's; the others sit next to it.
@@ -453,7 +455,7 @@ def render_turn(events, turn, live=False, latest=False, on_follow_up=None):
     if not live and events and events[0]["type"] == "recalled":
         recalled_turn(events[0])
         return events
-    seen, steps, text = [], {}, ""
+    seen, steps, text, drawn = [], {}, "", 0.0
     status = st.status(f":shimmer[{PHASE['thinking']}]" if live else "Worked", type="compact",
                        expanded=live, state="running" if live else "complete")
     answer, after = st.empty(), st.container()
@@ -476,7 +478,9 @@ def render_turn(events, turn, live=False, latest=False, on_follow_up=None):
                 step_body(ev, key=f"t{turn}-{ev['id']}")
         elif kind == "token" and live:
             text += ev["text"]
-            answer.markdown(text)
+            if time.monotonic() - drawn > REDRAW:  # redrawing every token re-sends and re-parses the whole answer
+                answer.markdown(text)
+                drawn = time.monotonic()
         elif kind == "text_reset" and live:
             text = ""
             answer.empty()
